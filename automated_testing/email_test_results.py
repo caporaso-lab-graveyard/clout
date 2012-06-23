@@ -13,8 +13,15 @@ __status__ = "Development"
 """Contains functions used in the email_test_results.py script."""
 
 def parse_email_list(email_list_lines):
-    return [line.strip() for line in email_list_lines \
-            if line.strip() != '' and not line.strip().startswith('#')]
+    return [line.strip() for line in email_list_lines if not _can_ignore(line)]
+
+def parse_email_settings(email_settings_lines):
+    settings = {}
+    for line in email_settings_lines:
+        if not _can_ignore(line):
+            setting, val = line.strip().split(' ')
+            settings[setting] = val
+    return settings
 
 def get_num_failures(test_results_lines):
     failures = 0
@@ -24,3 +31,7 @@ def get_num_failures(test_results_lines):
     if status_line != 'OK':
         failures = int(status_line.split('=')[1][:-1])
     return failures
+
+def _can_ignore(line):
+    return False if line.strip() != '' and not line.strip().startswith('#') \
+           else True

@@ -13,8 +13,8 @@ __status__ = "Development"
 """Test suite for the email_test_results.py module."""
 
 from cogent.util.unit_test import TestCase, main
-from automated_testing.email_test_results import (get_num_failures,
-                                                  parse_email_list)
+from automated_testing.email_test_results import (_can_ignore,
+        get_num_failures, parse_email_list, parse_email_settings)
 
 class EmailTestResultsTests(TestCase):
     """Tests for the email_test_results.py module."""
@@ -26,13 +26,24 @@ class EmailTestResultsTests(TestCase):
                             "foo2@bar2.baz2"]
 
         # Email list only containing comments.
-        self.email_list2 = ["# some comment...", "#foo@bar.baz"]
+        self.email_list2 = [" \t# some comment...", "#foo@bar.baz"]
 
         # Empty list.
         self.email_list3 = []
 
         # List with addresses containing whitespace before and after.
-        self.email_list4 = ["\tfoo@bar.baz  ", "\n\t  foo2@bar2.baz2\t "]
+        self.email_list4 = ["\tfoo@bar.baz  ", "\n\t  foo2@bar2.baz2\t ",
+                            "\t   \n\t"]
+
+        # Standard email settings.
+        self.email_settings1 = ["# A comment", "# Another comment",
+                "\t  smtp_server some.smtp.server  \t ", "smtp_port 42",
+                "sender foo@bar.baz", "password 424242!"]
+
+        # Bad email settings.
+        self.email_settings2 = ["# A comment", "", "  ", "\t\n",
+                "smtp_server some.smtp.server", " ", "smtp_port\t42",
+                "sender foo@bar.baz", "password 424242!"]
 
         # Pass.
         self.test_results1 = ["....", "--------------------------------------"
@@ -74,6 +85,18 @@ class EmailTestResultsTests(TestCase):
         obs = parse_email_list(self.email_list4)
         self.assertEqual(obs, exp)
 
+    def test_parse_email_settings_standard(self):
+        """Test parsing a standard email settings file."""
+        exp = {'smtp_server': 'some.smtp.server', 'smtp_port': '42',
+                'sender': 'foo@bar.baz', 'password': '424242!'}
+        obs = parse_email_settings(self.email_settings1)
+        self.assertEqual(obs, exp)
+
+    def test_parse_email_settings_invalid(self):
+        """Test parsing an invalid email settings file."""
+        self.assertRaises(ValueError,
+                          parse_email_settings, self.email_settings2)
+
     def test_get_num_failures_pass(self):
         """Test parsing test results that are a pass."""
         exp = 0
@@ -85,6 +108,17 @@ class EmailTestResultsTests(TestCase):
         exp = 1
         obs = get_num_failures(self.test_results2)
         self.assertEqual(obs, exp)
+
+    def test_can_ignore(self):
+        """Test whether comments and whitespace-only lines are ignored."""
+        self.assertEqual(_can_ignore(self.email_list1[0]), True)
+        self.assertEqual(_can_ignore(self.email_list1[1]), False)
+        self.assertEqual(_can_ignore(self.email_list1[2]), False)
+        self.assertEqual(_can_ignore(self.email_list2[0]), True)
+        self.assertEqual(_can_ignore(self.email_list2[1]), True)
+        self.assertEqual(_can_ignore(self.email_list4[0]), False)
+        self.assertEqual(_can_ignore(self.email_list4[1]), False)
+        self.assertEqual(_can_ignore(self.email_list4[2]), True)
 
 
 if __name__ == "__main__":
