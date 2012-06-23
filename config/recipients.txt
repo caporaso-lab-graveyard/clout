@@ -1,0 +1,5 @@
+# Add your email address to this list to receive the automated testing results.
+# Any line that starts with a '#' will be ignored, as well as blank or
+# whitespace-only lines.
+jai.rideout@gmail.com
+jr378@nau.edu
