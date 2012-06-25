@@ -16,5 +16,6 @@ starcluster -c starcluster_config get -u ubuntu nightly_tests /home/ubuntu/qiime
 # The second -c tells starcluster not to prompt us for termination
 # confirmation.
 starcluster -c starcluster_config terminate -c nightly_tests
-email_test_results.py -i qiime_all_tests_output.txt -l config/recipients.txt
+email_test_results.py -i qiime_all_tests_output.txt -l config/recipients.txt \
+    -s config/email_settings.txt
 rm qiime_all_tests_output.txt

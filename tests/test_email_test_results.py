@@ -14,7 +14,8 @@ __status__ = "Development"
 
 from cogent.util.unit_test import TestCase, main
 from automated_testing.email_test_results import (_can_ignore,
-        get_num_failures, parse_email_list, parse_email_settings)
+        build_email_summary, _get_num_failures, parse_email_list,
+        parse_email_settings)
 
 class EmailTestResultsTests(TestCase):
     """Tests for the email_test_results.py module."""
@@ -60,6 +61,8 @@ class EmailTestResultsTests(TestCase):
                 "obs = get_foo(self.foo1)",
                 "-------------------------------------------------------------"
                 "---------", "Ran 5 tests in 0.001s", "", "FAILED (errors=1)"]
+        
+        self.test_results_labels = ['QIIME', 'PyCogent']
 
     def test_parse_email_list_standard(self):
         """Test parsing a standard list of email addresses."""
@@ -97,16 +100,41 @@ class EmailTestResultsTests(TestCase):
         self.assertRaises(ValueError,
                           parse_email_settings, self.email_settings2)
 
+    def test_build_email_summary_standard(self):
+        """Test building an email body based on standard test results files."""
+        exp = 'QIIME: Pass\nPyCogent: Fail (1 failure)\n'
+        obs = build_email_summary([self.test_results1, self.test_results2],
+                                  self.test_results_labels)
+        self.assertEqual(obs, exp)
+
+    def test_build_email_summary_single(self):
+        """Test building an email body based on a single test results file."""
+        exp = 'foo: Pass\n'
+        obs = build_email_summary([self.test_results1], ['foo'])
+        self.assertEqual(obs, exp)
+
+    def test_build_email_summary_empty(self):
+        """Test building an email body based on no test results files."""
+        exp = ''
+        obs = build_email_summary([], [])
+        self.assertEqual(obs, exp)
+
+    def test_build_email_summary_invalid(self):
+        """Test building email body based on wrong num of labels and files."""
+        self.assertRaises(ValueError, build_email_summary, [], ['foo'])
+        self.assertRaises(ValueError, build_email_summary,
+                [self.test_results1], [])
+
     def test_get_num_failures_pass(self):
         """Test parsing test results that are a pass."""
         exp = 0
-        obs = get_num_failures(self.test_results1)
+        obs = _get_num_failures(self.test_results1)
         self.assertEqual(obs, exp)
 
     def test_get_num_failures_fail(self):
         """Test parsing test results that are a fail."""
         exp = 1
-        obs = get_num_failures(self.test_results2)
+        obs = _get_num_failures(self.test_results2)
         self.assertEqual(obs, exp)
 
     def test_can_ignore(self):
