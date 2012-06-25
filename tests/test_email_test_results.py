@@ -51,7 +51,7 @@ class EmailTestResultsTests(TestCase):
                 "--------------------------------", "Ran 4 tests in 0.000s",
                 "OK"]
 
-        # Fail.
+        # Fail (single).
         self.test_results2 = ["E....", "==================================="
                 "===================================", "ERROR: "
                 "test_foo (__main__.FooTests)", "Test the foo.",
@@ -61,6 +61,17 @@ class EmailTestResultsTests(TestCase):
                 "obs = get_foo(self.foo1)",
                 "-------------------------------------------------------------"
                 "---------", "Ran 5 tests in 0.001s", "", "FAILED (errors=1)"]
+
+        # Fail (multiple).
+        self.test_results3 = ["E....", "==================================="
+                "===================================", "ERROR: "
+                "test_foo (__main__.FooTests)", "Test the foo.",
+                "-------------------------------------------------------------"
+                "---------", "Traceback (most recent call last):",
+                "File 'tests/test_foo.py', line 42, in test_foo",
+                "obs = get_foo(self.foo1)",
+                "-------------------------------------------------------------"
+                "---------", "Ran 5 tests in 0.001s", "", "FAILED (errors=2)"]
         
         self.test_results_labels = ['QIIME', 'PyCogent']
 
@@ -111,6 +122,12 @@ class EmailTestResultsTests(TestCase):
         """Test building an email body based on a single test results file."""
         exp = 'foo: Pass\n'
         obs = build_email_summary([self.test_results1], ['foo'])
+        self.assertEqual(obs, exp)
+
+    def test_build_email_summary_multi_failures(self):
+        """Test building an email body based on multiple failures."""
+        exp = 'foo: Fail (2 failures)\n'
+        obs = build_email_summary([self.test_results3], ['foo'])
         self.assertEqual(obs, exp)
 
     def test_build_email_summary_empty(self):
