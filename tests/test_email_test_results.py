@@ -14,8 +14,8 @@ __status__ = "Development"
 
 from cogent.util.unit_test import TestCase, main
 from automated_testing.email_test_results import (_can_ignore,
-        build_email_summary, _get_num_failures, parse_email_list,
-        parse_email_settings)
+        _build_email_summary, _get_num_failures, _parse_email_list,
+        _parse_email_settings)
 
 class EmailTestResultsTests(TestCase):
     """Tests for the email_test_results.py module."""
@@ -71,75 +71,76 @@ class EmailTestResultsTests(TestCase):
                 "File 'tests/test_foo.py', line 42, in test_foo",
                 "obs = get_foo(self.foo1)",
                 "-------------------------------------------------------------"
-                "---------", "Ran 5 tests in 0.001s", "", "FAILED (errors=2)"]
+                "---------", "Ran 5 tests in 0.001s", "", "FAILED (errors=2)",
+                "FAILED (failures=3)"]
         
         self.test_results_labels = ['QIIME', 'PyCogent']
 
     def test_parse_email_list_standard(self):
         """Test parsing a standard list of email addresses."""
         exp = ['foo@bar.baz', 'foo2@bar2.baz2']
-        obs = parse_email_list(self.email_list1)
+        obs = _parse_email_list(self.email_list1)
         self.assertEqual(obs, exp)
 
     def test_parse_email_list_comments_only(self):
         """Test parsing a list containing only comments."""
         exp = []
-        obs = parse_email_list(self.email_list2)
+        obs = _parse_email_list(self.email_list2)
         self.assertEqual(obs, exp)
 
     def test_parse_email_list_empty(self):
         """Test parsing an empty email list."""
         exp = []
-        obs = parse_email_list(self.email_list3)
+        obs = _parse_email_list(self.email_list3)
         self.assertEqual(obs, exp)
 
     def test_parse_email_list_whitespace(self):
         """Test parsing a list of email addresses containing whitespace."""
         exp = ['foo@bar.baz', 'foo2@bar2.baz2']
-        obs = parse_email_list(self.email_list4)
+        obs = _parse_email_list(self.email_list4)
         self.assertEqual(obs, exp)
 
     def test_parse_email_settings_standard(self):
         """Test parsing a standard email settings file."""
         exp = {'smtp_server': 'some.smtp.server', 'smtp_port': '42',
                 'sender': 'foo@bar.baz', 'password': '424242!'}
-        obs = parse_email_settings(self.email_settings1)
+        obs = _parse_email_settings(self.email_settings1)
         self.assertEqual(obs, exp)
 
     def test_parse_email_settings_invalid(self):
         """Test parsing an invalid email settings file."""
         self.assertRaises(ValueError,
-                          parse_email_settings, self.email_settings2)
+                          _parse_email_settings, self.email_settings2)
 
     def test_build_email_summary_standard(self):
         """Test building an email body based on standard test results files."""
         exp = 'QIIME: Pass\nPyCogent: Fail (1 failure)\n'
-        obs = build_email_summary([self.test_results1, self.test_results2],
-                                  self.test_results_labels)
+        obs = _build_email_summary([self.test_results1, self.test_results2],
+                                   self.test_results_labels)
         self.assertEqual(obs, exp)
 
     def test_build_email_summary_single(self):
         """Test building an email body based on a single test results file."""
         exp = 'foo: Pass\n'
-        obs = build_email_summary([self.test_results1], ['foo'])
+        obs = _build_email_summary([self.test_results1], ['foo'])
         self.assertEqual(obs, exp)
 
     def test_build_email_summary_multi_failures(self):
         """Test building an email body based on multiple failures."""
-        exp = 'foo: Fail (2 failures)\n'
-        obs = build_email_summary([self.test_results3], ['foo'])
+        exp = 'foo: Fail (5 failures)\n'
+        obs = _build_email_summary([self.test_results3], ['foo'])
         self.assertEqual(obs, exp)
 
     def test_build_email_summary_empty(self):
         """Test building an email body based on no test results files."""
         exp = ''
-        obs = build_email_summary([], [])
+        obs = _build_email_summary([], [])
         self.assertEqual(obs, exp)
 
     def test_build_email_summary_invalid(self):
         """Test building email body based on wrong num of labels and files."""
-        self.assertRaises(ValueError, build_email_summary, [], ['foo'])
-        self.assertRaises(ValueError, build_email_summary,
+        self.assertRaises(ValueError, _build_email_summary, [], ['foo'])
+        self.assertRaises(ValueError, _build_email_summary,
                 [self.test_results1], [])
 
     def test_get_num_failures_pass(self):

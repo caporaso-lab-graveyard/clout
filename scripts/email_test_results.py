@@ -10,16 +10,10 @@ __maintainer__ = "Jai Ram Rideout"
 __email__ = "jai.rideout@gmail.com"
 __status__ = "Development"
 
-from email import Encoders
-from email.MIMEBase import MIMEBase
-
-from os.path import basename
 from qiime.util import (parse_command_line_parameters,
                         get_options_lookup,
                         make_option)
-
-from automated_testing.email_test_results import (build_email_summary,
-        parse_email_list, parse_email_settings, send_email)
+from automated_testing.email_test_results import email_test_results
 
 script_info = {}
 script_info['brief_description'] = """Sends an email of test results"""
@@ -61,8 +55,6 @@ script_info['version'] = __version__
 def main():
     option_parser, opts, args = parse_command_line_parameters(**script_info)
 
-    recipients = parse_email_list(open(opts.input_email_list, 'U'))
-    settings = parse_email_settings(open(opts.input_email_settings, 'U'))
     test_results_fps = opts.input_test_results.split(',')
 
     if opts.test_labels is not None:
@@ -70,12 +62,10 @@ def main():
     else:
         test_results_labels = test_results_fps
 
-    summary = build_email_summary(
+    email_test_results(
         [open(test_results_fp, 'U') for test_results_fp in test_results_fps],
-        test_results_labels)
-
-    send_email(settings['smtp_server'], settings['smtp_port'],
-               settings['sender'], settings['password'], recipients, summary)
+        test_results_fps, test_results_labels,
+        open(opts.input_email_list, 'U'), open(opts.input_email_settings, 'U'))
 
 
 if __name__ == "__main__":

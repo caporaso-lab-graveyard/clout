@@ -12,15 +12,28 @@ __status__ = "Development"
 
 """Contains functions used in the email_test_results.py script."""
 
+from email.Encoders import encode_base64
+from email.MIMEBase import MIMEBase
 from email.MIMEMultipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.Utils import formatdate
+from os.path import basename
 from smtplib import SMTP
 
-def parse_email_list(email_list_lines):
+def email_test_results(test_results_files, test_results_fps,
+                       test_results_labels, email_list_lines,
+                       email_settings_lines):
+    summary = _build_email_summary(test_results_files, test_results_labels)
+    recipients = _parse_email_list(email_list_lines)
+    settings = _parse_email_settings(email_settings_lines)
+    _send_email(settings['smtp_server'], settings['smtp_port'],
+                settings['sender'], settings['password'], recipients, summary,
+                test_results_fps)
+
+def _parse_email_list(email_list_lines):
     return [line.strip() for line in email_list_lines if not _can_ignore(line)]
 
-def parse_email_settings(email_settings_lines):
+def _parse_email_settings(email_settings_lines):
     settings = {}
     for line in email_settings_lines:
         if not _can_ignore(line):
@@ -28,11 +41,11 @@ def parse_email_settings(email_settings_lines):
             settings[setting] = val
     return settings
 
-def build_email_summary(test_results_files, test_results_labels):
+def _build_email_summary(test_results_files, test_results_labels):
     if len(test_results_files) != len(test_results_labels):
         raise ValueError("You must provide the same number of test labels for "
                          "the number of test results files that are provided.")
-    summary = ""
+    summary = ''
     for test_results_f, test_results_label in zip(test_results_files,
                                                   test_results_labels):
         summary += test_results_label + ': '
@@ -46,10 +59,9 @@ def build_email_summary(test_results_files, test_results_labels):
             summary += ')\n'
     return summary
 
-def send_email(host, port, sender, password, recipients, body,
+def _send_email(host, port, sender, password, recipients, body,
                attachments=None):
     """
-
     This code is largely based on the code found here:
     http://www.blog.pythonlibrary.org/2010/05/14/how-to-send-email-with-python/
     http://segfault.in/2010/12/sending-gmail-from-python/
@@ -61,13 +73,13 @@ def send_email(host, port, sender, password, recipients, body,
     msg['Date'] = formatdate(localtime=True)
  
     if attachments is not None:
-        part = MIMEBase('application', "octet-stream")
-        part.set_payload(open(attachments, 'rb').read())
-        Encoders.encode_base64(part)
-        part.add_header('Content-Disposition', 'attachment; filename="%s"' %
-                        path.basename(attachments))
-        msg.attach(part)
-
+        for attachment in attachments:
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(open(attachment, 'rb').read())
+            encode_base64(part)
+            part.add_header('Content-Disposition',
+                    'attachment; filename="%s"' % basename(attachment))
+            msg.attach(part)
     part = MIMEText('text', 'plain')
     part.set_payload(body)
     msg.attach(part)
@@ -82,11 +94,10 @@ def send_email(host, port, sender, password, recipients, body,
 
 def _get_num_failures(test_results_lines):
     failures = 0
-    # Get the last line in the file.
-    for status_line in test_results_lines:
-        status_line = status_line.strip()
-    if status_line != 'OK':
-        failures = int(status_line.split('=')[1][:-1])
+    for line in test_results_lines:
+        line = line.strip()
+        if line.startswith('FAILED ('):
+            failures += int(line.split('=')[1][:-1])
     return failures
 
 def _can_ignore(line):
