@@ -24,8 +24,8 @@ class RunTestSuitesTests(TestCase):
         """Define some sample data that will be used by the tests."""
         # Standard config file with two test suites.
         self.config1 = ["# a comment", " ",
-                "QIIME\t/bin/tests.py\t/bin/setup.sh",
-                "PyCogent\t/bin/cogent_tests\tNA"]
+                "QIIME\tsource /bin/setup.sh; cd /bin; ./tests.py",
+                "PyCogent\t/bin/cogent_tests"]
 
         # An empty config.
         self.config2 = ["# a comment", " ", "\n\t\t\t\t"]
@@ -35,8 +35,11 @@ class RunTestSuitesTests(TestCase):
         self.config3 = ["# a comment", "QIIME\t/bin/tests.py", "PyCogent"]
 
         # Non-unique test suite labels.
-        self.config4 = ["# a comment", "QIIME\t/bin/tests.py\tbar",
-                        "PyCogent\tfoo\tbar", "QIIME\t/bar\t/baz"]
+        self.config4 = ["# a comment", "QIIME\t/bin/tests.py",
+                        "PyCogent\t/foo.py", "QIIME\t/bar/baz.sh"]
+
+        # Empty fields.
+        self.config5 = ["QIIME\t/bin/tests.py", "\t/bin/foo.sh"]
 
         # Standard email list with a comment.
         self.email_list1 = ["# some comment...", "foo@bar.baz",
@@ -105,13 +108,11 @@ class RunTestSuitesTests(TestCase):
                 "-------------------------------------------------------------"
                 "---------", "Ran 5 tests in 0.001s", "", "FAILED (errors=2)",
                 "FAILED (failures=3)"]
-        
-        self.test_results_labels = ['QIIME', 'PyCogent']
 
     def test_parse_config_file_standard(self):
         """Test parsing a standard config file."""
-        exp = [['QIIME', '/bin/tests.py', '/bin/setup.sh'], ['PyCogent',
-        '/bin/cogent_tests', 'NA']]
+        exp = [['QIIME', 'source /bin/setup.sh; cd /bin; ./tests.py'],
+               ['PyCogent', '/bin/cogent_tests']]
         obs = _parse_config_file(self.config1)
         self.assertEqual(obs, exp)
 
@@ -126,6 +127,10 @@ class RunTestSuitesTests(TestCase):
     def test_parse_config_file_nonunique_labels(self):
         """Test parsing an config file with non-unique labels."""
         self.assertRaises(ValueError, _parse_config_file, self.config4)
+
+    def test_parse_config_file_empty_fields(self):
+        """Test parsing an config file with empty fields."""
+        self.assertRaises(ValueError, _parse_config_file, self.config5)
 
     def test_parse_email_list_standard(self):
         """Test parsing a standard list of email addresses."""
@@ -168,47 +173,64 @@ class RunTestSuitesTests(TestCase):
 
     def test_build_test_execution_commands_standard(self):
         """Test building commands based on standard, valid input."""
-        exp = (['starcluster -c sc_config start nightly_tests',
-            'starcluster -c sc_config terminate -c nightly_tests'], {'QIIME':
-            "starcluster -c sc_config sshmaster -u ubuntu nightly_tests "
-            "'source /bin/setup.sh; cd /bin; ./tests.py'", 'PyCogent':
-            "starcluster -c sc_config sshmaster -u ubuntu nightly_tests "
-            "'cd /bin; ./cogent_tests'"})
+        exp = [(None, "starcluster -c sc_config start nightly_tests"),
+               ('QIIME', "starcluster -c sc_config sshmaster -u ubuntu "
+               "nightly_tests 'source /bin/setup.sh; cd /bin; ./tests.py'"),
+               ('PyCogent', "starcluster -c sc_config sshmaster -u ubuntu "
+               "nightly_tests '/bin/cogent_tests'"),
+               (None, 'starcluster -c sc_config terminate -c nightly_tests')]
+
         test_suites = _parse_config_file(self.config1)
         obs = _build_test_execution_commands(test_suites, 'sc_config',
                 'ubuntu', 'nightly_tests')
         self.assertEqual(obs, exp)
 
+    def test_build_test_execution_commands_no_test_suites(self):
+        """Test building commands with no test suites."""
+        exp = [(None, "starcluster -c sc_config start nightly_tests"),
+               (None, 'starcluster -c sc_config terminate -c nightly_tests')]
+        obs = _build_test_execution_commands([], 'sc_config', 'ubuntu',
+                                             'nightly_tests')
+        self.assertEqual(obs, exp)
+
     def test_build_email_summary_standard(self):
         """Test building an email body based on standard test results files."""
         exp = 'QIIME: Pass\nPyCogent: Fail (1 failure)\n'
-        obs = _build_email_summary([self.test_results1, self.test_results2],
-                                   self.test_results_labels)
+        obs = _build_email_summary([('QIIME', 'QIIME_results.txt',
+                                     self.test_results1), ('PyCogent',
+                                     'PyCogent_results.txt',
+                                     self.test_results2), (None, 'log.txt',
+                                     self.test_results2)])
         self.assertEqual(obs, exp)
 
     def test_build_email_summary_single(self):
         """Test building an email body based on a single test results file."""
         exp = 'foo: Pass\n'
-        obs = _build_email_summary([self.test_results1], ['foo'])
+        obs = _build_email_summary([('foo', 'foo_results.txt',
+                                     self.test_results1)])
         self.assertEqual(obs, exp)
 
     def test_build_email_summary_multi_failures(self):
         """Test building an email body based on multiple failures."""
         exp = 'foo: Fail (5 failures)\n'
-        obs = _build_email_summary([self.test_results3], ['foo'])
+        obs = _build_email_summary([('foo', 'foo_results.txt',
+                                     self.test_results3)])
         self.assertEqual(obs, exp)
 
     def test_build_email_summary_empty(self):
         """Test building an email body based on no test results files."""
-        exp = ''
-        obs = _build_email_summary([], [])
-        self.assertEqual(obs, exp)
+        obs = _build_email_summary([])
+        self.assertEqual(obs, '')
 
-    def test_build_email_summary_invalid(self):
-        """Test building email body based on wrong num of labels and files."""
-        self.assertRaises(ValueError, _build_email_summary, [], ['foo'])
-        self.assertRaises(ValueError, _build_email_summary,
-                [self.test_results1], [])
+    def test_build_email_summary_all_logs(self):
+        """Test building email body based on only log files (no test suite)."""
+        obs = _build_email_summary([(None, 'QIIME_results.txt',
+                                     self.test_results1),
+                                    (None, 'PyCogent_results.txt',
+                                     self.test_results2),
+                                    (None, 'log.txt',
+                                     self.test_results2)])
+        self.assertEqual(obs, '')
 
     def test_get_num_failures_pass(self):
         """Test parsing test results that are a pass."""

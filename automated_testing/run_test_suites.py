@@ -17,35 +17,69 @@ from email.MIMEBase import MIMEBase
 from email.MIMEMultipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.Utils import formatdate
-from os import remove
-from os.path import basename, dirname, isabs
+from os.path import basename
 from smtplib import SMTP
-from tempfile import NamedTemporaryFile
+from tempfile import TemporaryFile
 
-from qiime.util import get_qiime_temp_dir
+from qiime.util import get_qiime_temp_dir, qiime_system_call
 
 def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
                     user, cluster_tag):
-    # Parse the various configuration files.
+    # Parse the various configuration files first so that we know if there's
+    # any outstanding problems with file formats before continuing.
     test_suites = _parse_config_file(config_f)
     recipients = _parse_email_list(recipients_f)
     email_settings = _parse_email_settings(email_settings_f)
-    log_commands, test_suite_commands = _build_test_execution_commands(
-            test_suites, sc_config_fp, user, cluster_tag)
+
+    # Build up a list of commands to be executed (these include launching a
+    # cluster, running the test suites, and terminating the cluster).
+    commands = _build_test_execution_commands(test_suites, sc_config_fp, user,
+                                              cluster_tag)
 
     # Create a unique temporary file to hold the results of the following
-    # commands.
-    results_f = NamedTemporaryFile(mode='w', prefix='%s_test_suite_results'
-            % test_suite_name, suffix='.txt', dir=get_qiime_temp_dir(),
-            delete=True)
+    # commands. This will automatically be deleted when it is closed or
+    # garbage-collected, plus it isn't even visible in the file system on most
+    # operating systems.
+    log_f = TemporaryFile(prefix='automated_testing_log', suffix='.txt',
+                          dir=get_qiime_temp_dir())
 
-    summary = _build_email_summary(test_results_files, test_results_labels)
-    _send_email(settings['smtp_server'], settings['smtp_port'],
-                settings['sender'], settings['password'], recipients, summary,
-                test_results_fps)
+    # Execute the commands, keeping track of stdout and stderr in a temporary
+    # file for each test suite. These will be used as attachments when the
+    # email is sent. Since the temporary files will have a randomly-generated
+    # name, we'll also specify what we want the file to be called when it is
+    # attached to the email (we don't have to worry about having unique
+    # filenames at that point).
+    attachments = [(None, 'automated_testing_log.txt', log_f)]
+    for command in commands:
+        stdout, stderr, ret_val = qiime_system_call(command[1])
+        log_f.write('Command:\n\n%s\n\n' % command[1])
+        log_f.write('Stdout:\n\n%s\n' % stdout)
+        log_f.write('Stderr:\n\n%s\n' % stderr)
 
-    log_f.close()
-    remove(log_fp)
+        if command[0] is not None:
+            # If the command is a test-suite-specific command, also log it in a
+            # separate temporary file for the test suite.
+            test_suite_f = TemporaryFile(prefix='automated_testing_log_%s' %
+                    command[0], suffix='.txt', dir=get_qiime_temp_dir())
+            test_suite_f.write('Command:\n\n%s\n\n' % command[1])
+            test_suite_f.write('Stdout:\n\n%s\n' % stdout)
+            test_suite_f.write('Stderr:\n\n%s\n' % stderr)
+            attachments.append((command[0], '%s_results.txt' % command[0],
+                                test_suite_f))
+
+    # Set our file position to the beginning for all files since we are in
+    # read/write mode and we need to read from the beginning again. Closing the
+    # file will delete it.
+    for attachment in attachments:
+        attachment[2].seek(0, 0)
+    summary = _build_email_summary(attachments)
+
+    # Reposition again for additional reading.
+    for attachment in attachments:
+        attachment[2].seek(0, 0)
+    _send_email(email_settings['smtp_server'], email_settings['smtp_port'],
+                email_settings['sender'], email_settings['password'],
+                recipients, summary, attachments)
 
 def _parse_config_file(config_f):
     results = []
@@ -53,9 +87,9 @@ def _parse_config_file(config_f):
     for line in config_f:
         if not _can_ignore(line):
             fields = line.strip().split('\t')
-            if len(fields) != 3:
+            if len(fields) != 2:
                 raise ValueError("Each line in the config file must contain "
-                                 "exactly three fields separated by tabs.")
+                                 "exactly two fields separated by tabs.")
             if fields[0] in used_test_suite_names:
                 raise ValueError("The test suite label '%s' has already been "
                                  "used. Each test suite label must be unique."
@@ -103,61 +137,41 @@ def _parse_email_settings(email_settings_f):
 def _build_test_execution_commands(test_suites, sc_config_fp, user,
                                    cluster_tag):
     # Build up our list of commands to run (commands that are independent of a
-    # test suite run).
-    log_commands = ["starcluster -c %s start %s" % (sc_config_fp, cluster_tag)]
-
-    # Run the test suite(s) remotely on a cluster using the provided
-    # starcluster config file.
-    test_suite_commands = {}
+    # test suite run). We also need to keep track of whether the output of each
+    # command should be put in its own test-suite-specific email attachment, or
+    # whether it is a general logging command, such as the one below.
+    commands = [(None, "starcluster -c %s start %s" %
+                       (sc_config_fp, cluster_tag))]
     for test_suite in test_suites:
-        test_suite_name = test_suite[0]
-        executable_fp = test_suite[1]
-        setup_fp = test_suite[2]
-
-        # Make sure we were given an absolute path.
-        if not isabs(executable_fp):
-            raise ValueError("The remote filepath '%s' must be an absolute "
-                             "path." % executable_fp)
-        # Find the directory containing the test suite executable.
-        exec_dir = dirname(executable_fp)
-        exec_name = basename(executable_fp)
+        test_suite_name, test_suite_exec = test_suite
 
         # To have the next command work without getting prompted to accept the
         # new host, the user must have 'StrictHostKeyChecking no' in their SSH
         # config (on the local machine). TODO: try to get starcluster devs to
         # add this feature to sshmaster.
-        command = "starcluster -c %s sshmaster -u %s %s '" % (
-                  sc_config_fp, user, cluster_tag)
-        if setup_fp != 'NA':
-            if not isabs(setup_fp):
-                raise ValueError("The remote filepath '%s' must be an "
-                                 "absolute path." % setup_fp)
-            command += "source %s; " % setup_fp
-        command += "cd %s; ./%s'" % (exec_dir, exec_name)
-        test_suite_commands[test_suite_name] = command
+        commands.append((test_suite_name,
+                         "starcluster -c %s sshmaster -u %s %s '%s'" %
+                         (sc_config_fp, user, cluster_tag, test_suite_exec)))
 
     # The second -c tells starcluster not to prompt us for termination
     # confirmation.
-    log_commands.append("starcluster -c %s terminate -c %s" %
-                        (sc_config_fp, cluster_tag))
-    return log_commands, test_suite_commands
+    commands.append((None, "starcluster -c %s terminate -c %s" %
+                           (sc_config_fp, cluster_tag)))
+    return commands
 
-def _build_email_summary(test_results_files, test_results_labels):
-    if len(test_results_files) != len(test_results_labels):
-        raise ValueError("You must provide the same number of test labels for "
-                         "the number of test results files that are provided.")
+def _build_email_summary(attachments):
     summary = ''
-    for test_results_f, test_results_label in zip(test_results_files,
-                                                  test_results_labels):
-        summary += test_results_label + ': '
-        num_failures = _get_num_failures(test_results_f)
-        if num_failures == 0:
-            summary += 'Pass\n'
-        else:
-            summary += 'Fail (%d failure' % num_failures
-            if num_failures > 1:
-                summary += 's'
-            summary += ')\n'
+    for test_suite_label, attachment_name, attachment_f in attachments:
+        if test_suite_label is not None:
+            summary += test_suite_label + ': '
+            num_failures = _get_num_failures(attachment_f)
+            if num_failures == 0:
+                summary += 'Pass\n'
+            else:
+                summary += 'Fail (%d failure' % num_failures
+                if num_failures > 1:
+                    summary += 's'
+                summary += ')\n'
     return summary
 
 def _send_email(host, port, sender, password, recipients, body,
@@ -170,16 +184,16 @@ def _send_email(host, port, sender, password, recipients, body,
     msg = MIMEMultipart()
     msg['From'] = sender
     msg['To'] = ', '.join(recipients)
-    msg['Subject'] = "Test results"
+    msg['Subject'] = "Test suite results"
     msg['Date'] = formatdate(localtime=True)
  
     if attachments is not None:
-        for attachment in attachments:
+        for test_suite_label, attachment_name, attachment_f in attachments:
             part = MIMEBase('application', 'octet-stream')
-            part.set_payload(open(attachment, 'rb').read())
+            part.set_payload(attachment_f.read())
             encode_base64(part)
             part.add_header('Content-Disposition',
-                    'attachment; filename="%s"' % basename(attachment))
+                            'attachment; filename="%s"' % attachment_name)
             msg.attach(part)
     part = MIMEText('text', 'plain')
     part.set_payload(body)
