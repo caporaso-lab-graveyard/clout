@@ -185,6 +185,21 @@ class RunTestSuitesTests(TestCase):
                 'ubuntu', 'nightly_tests')
         self.assertEqual(obs, exp)
 
+    def test_build_test_execution_commands_custom_cluster_template(self):
+        """Test building commands using a non-default cluster template."""
+        exp = [(None, "starcluster -c sc_config start -c "
+                "some_cluster_template nightly_tests"),
+               ('QIIME', "starcluster -c sc_config sshmaster -u ubuntu "
+               "nightly_tests 'source /bin/setup.sh; cd /bin; ./tests.py'"),
+               ('PyCogent', "starcluster -c sc_config sshmaster -u ubuntu "
+               "nightly_tests '/bin/cogent_tests'"),
+               (None, 'starcluster -c sc_config terminate -c nightly_tests')]
+
+        test_suites = _parse_config_file(self.config1)
+        obs = _build_test_execution_commands(test_suites, 'sc_config',
+                'ubuntu', 'nightly_tests', 'some_cluster_template')
+        self.assertEqual(obs, exp)
+
     def test_build_test_execution_commands_no_test_suites(self):
         """Test building commands with no test suites."""
         exp = [(None, "starcluster -c sc_config start nightly_tests"),

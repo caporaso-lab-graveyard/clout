@@ -10,9 +10,7 @@ __maintainer__ = "Jai Ram Rideout"
 __email__ = "jai.rideout@gmail.com"
 __status__ = "Development"
 
-from qiime.util import (parse_command_line_parameters,
-                        get_options_lookup,
-                        make_option)
+from qiime.util import (parse_command_line_parameters, make_option)
 from automated_testing.run_test_suites import run_test_suites
 
 script_info = {}
@@ -39,30 +37,35 @@ The script does not produce any output files.
 """
 
 script_info['required_options'] = [
-    make_option('-i','--input_config',
+    make_option('-i','--input_config', type='existing_filepath',
         help='the input configuration file describing the test suites to be '
         'executed'),
-    make_option('-s','--input_starcluster_config',
+    make_option('-s','--input_starcluster_config', type='existing_filepath',
         help='the input starcluster config file. The default cluster template '
         'will be used by the script to run the test suite(s) on. You should '
         'only need a single-node cluster'),
-    make_option('-u','--user',
+    make_option('-u','--user', type='string',
         help='the user to run the test suites as on the remote cluster. Files '
         'will be written to the user\'s home on the remote cluster'),
-    make_option('-c','--cluster_tag',
+    make_option('-c','--cluster_tag', type='string',
         help='the cluster tag to use for the cluster that the test suite(s) '
         'will run on'),
-    make_option('-l','--input_email_list',
+    make_option('-l','--input_email_list', type='existing_filepath',
         help='the input email list file. This should be a file containing '
         'an email address on each line. Lines starting with "#" or lines that '
         'only contain whitespace or are blank will be ignored'),
-    make_option('-e','--input_email_settings',
+    make_option('-e','--input_email_settings', type='existing_filepath',
         help='the input email settings file. This should be a file containing '
         'key/value pairs separated by a tab that tell the script how to send '
         'the email. smtp_server, smtp_port, sender, and password must be '
         'defined')
 ]
-script_info['optional_options'] = []
+script_info['optional_options'] = [
+    make_option('-t','--cluster_template', type='string',
+        help='the cluster template to use (defined in the starcluster config '
+        'file) for running the test suite(s) on [default: starcluster config ',
+        'default template]', default=None)
+]
 script_info['version'] = __version__
 
 def main():
@@ -70,7 +73,8 @@ def main():
 
     run_test_suites(open(opts.input_config, 'U'),
             opts.input_starcluster_config, open(opts.input_email_list, 'U'),
-            open(opts.input_email_settings, 'U'), opts.user, opts.cluster_tag)
+            open(opts.input_email_settings, 'U'), opts.user, opts.cluster_tag,
+            opts.cluster_template)
 
 
 if __name__ == "__main__":

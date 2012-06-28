@@ -24,7 +24,7 @@ from tempfile import TemporaryFile
 from qiime.util import get_qiime_temp_dir, qiime_system_call
 
 def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
-                    user, cluster_tag):
+                    user, cluster_tag, cluster_template=None):
     # Parse the various configuration files first so that we know if there's
     # any outstanding problems with file formats before continuing.
     test_suites = _parse_config_file(config_f)
@@ -34,7 +34,7 @@ def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
     # Build up a list of commands to be executed (these include launching a
     # cluster, running the test suites, and terminating the cluster).
     commands = _build_test_execution_commands(test_suites, sc_config_fp, user,
-                                              cluster_tag)
+                                              cluster_tag, cluster_template)
 
     # Create a unique temporary file to hold the results of the following
     # commands. This will automatically be deleted when it is closed or
@@ -135,13 +135,18 @@ def _parse_email_settings(email_settings_f):
     return settings
 
 def _build_test_execution_commands(test_suites, sc_config_fp, user,
-                                   cluster_tag):
+                                   cluster_tag, cluster_template=None):
     # Build up our list of commands to run (commands that are independent of a
     # test suite run). We also need to keep track of whether the output of each
     # command should be put in its own test-suite-specific email attachment, or
     # whether it is a general logging command, such as the one below.
-    commands = [(None, "starcluster -c %s start %s" %
-                       (sc_config_fp, cluster_tag))]
+    commands = []
+    starcluster_start_command = "starcluster -c %s start " % sc_config_fp
+    if cluster_template is not None:
+        starcluster_start_command += "-c %s " % cluster_template
+    starcluster_start_command += "%s" % cluster_tag
+    commands.append((None, starcluster_start_command))
+
     for test_suite in test_suites:
         test_suite_name, test_suite_exec = test_suite
 
