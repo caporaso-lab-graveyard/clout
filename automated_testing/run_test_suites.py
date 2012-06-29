@@ -82,9 +82,15 @@ def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
         log_f.write('Stdout:\n\n%s\n' % stdout)
         log_f.write('Stderr:\n\n%s\n' % stderr)
 
-        # If the command is a test-suite-specific command, also log it in a
-        # separate temporary file for the test suite.
-        if command[0] is not None:
+        if command[0] is None:
+            # The command is a setup/teardown command, so check to make sure
+            # it succeeded. If it didn't, don't continue as there is no point
+            # in trying to run anything else.
+            if ret_val != 0:
+                break
+        else:
+            # The command is a test-suite-specific command, also log it in a
+            # separate temporary file for the test suite.
             test_suite_f = TemporaryFile(prefix='automated_testing_log_%s' %
                     command[0], suffix='.txt', dir=get_qiime_temp_dir())
             test_suite_f.write('Command:\n\n%s\n\n' % command[1])
