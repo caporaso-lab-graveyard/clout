@@ -1,0 +1,33 @@
+########################################################################
+## Sample StarCluster configuration file for automated testing system ##
+########################################################################
+[global]
+DEFAULT_TEMPLATE=automated_testing
+ENABLE_EXPERIMENTAL=True
+
+#############################################
+## AWS Credentials and Connection Settings ##
+#############################################
+[aws info]
+AWS_ACCESS_KEY_ID = some_access_key_id
+AWS_SECRET_ACCESS_KEY = some_secret_access_key
+AWS_USER_ID = some_user_id
+AWS_REGION_NAME = some_region_name
+
+###########################
+## Defining EC2 Keypairs ##
+###########################
+[key automated_testing_key]
+KEY_LOCATION=/some/RSA/key/location
+
+################################
+## Defining Cluster Templates ##
+################################
+[cluster automated_testing]
+KEYNAME = automated_testing_key
+CLUSTER_SIZE = 1
+CLUSTER_USER = sgeadmin
+CLUSTER_SHELL = bash
+NODE_IMAGE_ID = some_ami_id
+NODE_INSTANCE_TYPE = m2.xlarge
+DISABLE_QUEUE=True

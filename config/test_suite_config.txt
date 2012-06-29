@@ -1,0 +1,4 @@
+# Put your commands below for each test suite.
+QIIME	source /home/ubuntu/qiime_software/activate.sh && /home/ubuntu/qiime_software/qiime-1.5.0-release/tests/all_tests.py
+PyCogent	source /home/ubuntu/qiime_software/activate.sh && cd /home/ubuntu/qiime_software/pycogent-1.5.1-release && ./run_tests
+biom-format	source /home/ubuntu/qiime_software/activate.sh && python /home/ubuntu/qiime_software/biom-format-0.9.3-release/python-code/tests/all_tests.py

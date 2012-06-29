@@ -275,7 +275,8 @@ def _send_email(host, port, sender, password, recipients, body,
                attachments=None):
     """Sends an email (optionally with attachments).
 
-    This function does not return anything.
+    This function does not return anything. It is not unit tested because it
+    sends an actual email.
 
     This code is largely based on the code found here:
     http://www.blog.pythonlibrary.org/2010/05/14/how-to-send-email-with-python/

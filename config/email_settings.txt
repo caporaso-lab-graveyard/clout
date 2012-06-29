@@ -1,0 +1,7 @@
+# Add your email settings here that will be used to send the test results. Each
+# keyword/value pair should be separated by a tab. No keyword/value pairs may
+# be omitted.
+smtp_server	smtp.foo.com
+smtp_port	587
+sender	bar@foo.com
+password	1234567890

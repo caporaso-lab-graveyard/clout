@@ -1,0 +1,126 @@
+===========================================
+Automated Testing System Installation Guide
+===========================================
+
+#####################
+Required Dependencies
+#####################
+
+The automated testing system requires:
+
+- Python 2.7 (other version may also work, though this is the officially tested
+and supported version)
+
+- QIIME 1.5.0
+
+- StarCluster (tested on 0.93.3)
+
+############
+System Setup
+############
+
+1) Edit your ssh config (typically in ~/.ssh/config) and add the following two
+lines:
+
+StrictHostKeyChecking no
+ServerAliveInterval 120
+
+The first line tells SSH not to ask us whether we want to connect or not to an
+unknown host, which will ALWAYS occur since the Amazon EC2 instance will always
+be a 'new' host each time one is created. This option allows us bypass this
+prompt and keep the entire process automated.
+
+The second line tells us to send keepalive packets to the Amazon EC2 instance
+every two minutes so that our SSH connection doesn't drop during long-running
+test suites.
+
+2) Add the automated testing system's scripts and library areas to your PATH
+and PYTHONPATH, respectively, changing the filepaths to point to wherever this
+project resides. Feel free to add these lines to your .bashrc or .bash_profile
+so that you won't have to execute them every time you open a new shell (make
+sure to source your .bashrc or .bash_profile after you've added the lines):
+
+export PATH=/home/some_user/automated_testing/scripts:$PATH
+export PYTHONPATH=/home/some_user/automated_testing:$PYTHONPATH
+
+3) Test that your install appears to be working by running the following
+command:
+
+run_test_suites.py -h
+
+You should see the help text for the run_test_suites.py script printed to your
+terminal.
+
+#########################
+Input Configuration Files
+#########################
+
+The automated testing system requires four different configuration files.
+Examples of each type of file can be found under the 'config' directory.
+
+1) Test suite configuration file
+
+This file contains tab-separated fields describing each test suite that will be
+run by the automated testing system. All fields are required. The test suites
+will be executed in the order that they appear in this file.
+
+The first field is the label/name of the test suite, as it will appear in the
+email summary. This field can be virtually any human-readable string that will
+be used to identify the test suite. This field must be unique across all
+entries in this file.
+
+The second field is the set of commands that will be executed to run the test
+suite on the cluster. This includes any setup commands (e.g. sourcing a shell
+script, svn updating a checkout to ensure you're testing the latest and
+greatest changes, etc.) that need to be run before the test suite is executed.
+All stdout and stderr will be logged for these commands and included in the
+email. It is recommended that you use absolute paths for all of the filepaths.
+It is also recommended to use '&&' to separate the commands so that the
+commands will abort at the first failure and return that exit code instead of
+trying to continue on. This way you'll be able to see the first thing that
+failed and not waste money paying for EC2 compute power that ultimately won't
+prove useful.
+
+IMPORTANT: The commands that are executed should follow the Unix standard for
+return codes (a return code of zero indicates success, anything else indicates
+failure). The automated testing system uses the return codes to determine
+whether or not there was a problem in executing any of the commands, as well as
+to determine the status of the test suites themselves. Thus, if a test fails,
+make sure your test suite executable returns a non-zero return code, and
+likewise, if all tests pass, your test suite executable should return zero for
+success.
+
+2) StarCluster configuration file
+
+This file is the StarCluster configuration file that the automated testing
+system will use when booting up a cluster. This file contains important
+information regarding your Amazon EC2 account, the cluster template to use for
+running the tests on, etc.. Please refer to http://web.mit.edu/star/cluster/
+for instructions on how to set up a StarCluster configuration file.
+
+IMPORTANT: The automated testing system currently only uses a single master
+node on the cluster to execute the test suites on (the test suites are executed
+one after another). Thus, you'll only need a single-node cluster defined in
+your cluster template (see the example config file for more details).
+
+3) Email recipients configuration file
+
+This file contains a list of email addresses (one per line) of the individuals
+who should receive an email of the testing results.
+
+4) Email settings configuration file
+
+This file contains four key/value pairs (each separated by a tab) that define
+how the automated testing system should send the email. The fields
+'smtp_server', 'smtp_port', 'sender', and 'password' must be defined. The
+'sender' field is the email address that will show up in the 'From' field in
+the email, and it is also used to log into the SMTP server in conjunction with
+the 'password' field.
+
+##############
+Usage Examples
+##############
+
+Please run 'run_test_suites.py -h' to see examples of how the script can be
+run. Finally, you may want to add the script command to a crontab to have the
+test suites automatically run at some regular interval.
