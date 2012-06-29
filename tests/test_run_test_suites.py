@@ -14,8 +14,8 @@ __status__ = "Development"
 
 from cogent.util.unit_test import TestCase, main
 from automated_testing.run_test_suites import (_build_email_summary,
-        _build_test_execution_commands, _can_ignore, _get_num_failures,
-        _parse_config_file, _parse_email_list, _parse_email_settings)
+        _build_test_execution_commands, _can_ignore, _parse_config_file,
+        _parse_email_list, _parse_email_settings)
 
 class RunTestSuitesTests(TestCase):
     """Tests for the run_test_suites.py module."""
@@ -208,56 +208,46 @@ class RunTestSuitesTests(TestCase):
                                              'nightly_tests')
         self.assertEqual(obs, exp)
 
-    def test_build_email_summary_standard(self):
-        """Test building an email body based on standard test results files."""
-        exp = 'QIIME: Pass\nPyCogent: Fail (1 failure)\n'
-        obs = _build_email_summary([('QIIME', 'QIIME_results.txt',
-                                     self.test_results1), ('PyCogent',
-                                     'PyCogent_results.txt',
-                                     self.test_results2), (None, 'log.txt',
-                                     self.test_results2)])
+    def test_build_email_summary_all_pass(self):
+        """Test building an email body where all commands ran okay."""
+        exp = 'QIIME: Pass\nPyCogent: Pass\n'
+        obs = _build_email_summary([('QIIME', 0), ('PyCogent', 0), (None, 0)])
         self.assertEqual(obs, exp)
 
-    def test_build_email_summary_single(self):
-        """Test building an email body based on a single test results file."""
+    def test_build_email_summary_all_fail(self):
+        """Test building an email body where all commands failed."""
+        exp = 'QIIME: Fail\nPyCogent: Fail\n'
+        obs = _build_email_summary([('QIIME', 1), ('PyCogent', 77), (None, 0)])
+        self.assertEqual(obs, exp)
+
+    def test_build_email_summary_single_suite(self):
+        """Test building an email body based on a single test suite."""
         exp = 'foo: Pass\n'
-        obs = _build_email_summary([('foo', 'foo_results.txt',
-                                     self.test_results1)])
+        obs = _build_email_summary([('foo', 0)])
         self.assertEqual(obs, exp)
 
-    def test_build_email_summary_multi_failures(self):
-        """Test building an email body based on multiple failures."""
-        exp = 'foo: Fail (5 failures)\n'
-        obs = _build_email_summary([('foo', 'foo_results.txt',
-                                     self.test_results3)])
+    def test_build_email_summary_log_failure(self):
+        """Test building an email body based on a log command failure."""
+        exp = "There were problems in setting up or tearing " + \
+              "down the remote cluster while preparing to " + \
+              "execute the test suite(s). Please check the " + \
+              "attached log for more details.\n\n"
+        obs = _build_email_summary([(None, 1)])
+        self.assertEqual(obs, exp)
+
+    def test_build_email_summary_multiple_log_failures(self):
+        """Test building email body based on multiple log commands failing."""
+        exp = "There were problems in setting up or tearing " + \
+              "down the remote cluster while preparing to " + \
+              "execute the test suite(s). Please check the " + \
+              "attached log for more details.\n\n"
+        obs = _build_email_summary([(None, 1), (None, 127), (None, 4)])
         self.assertEqual(obs, exp)
 
     def test_build_email_summary_empty(self):
-        """Test building an email body based on no test results files."""
+        """Test building an email body based on no commands being run."""
         obs = _build_email_summary([])
         self.assertEqual(obs, '')
-
-    def test_build_email_summary_all_logs(self):
-        """Test building email body based on only log files (no test suite)."""
-        obs = _build_email_summary([(None, 'QIIME_results.txt',
-                                     self.test_results1),
-                                    (None, 'PyCogent_results.txt',
-                                     self.test_results2),
-                                    (None, 'log.txt',
-                                     self.test_results2)])
-        self.assertEqual(obs, '')
-
-    def test_get_num_failures_pass(self):
-        """Test parsing test results that are a pass."""
-        exp = 0
-        obs = _get_num_failures(self.test_results1)
-        self.assertEqual(obs, exp)
-
-    def test_get_num_failures_fail(self):
-        """Test parsing test results that are a fail."""
-        exp = 1
-        obs = _get_num_failures(self.test_results2)
-        self.assertEqual(obs, exp)
 
     def test_can_ignore(self):
         """Test whether comments and whitespace-only lines are ignored."""
