@@ -310,7 +310,7 @@ def _send_email(host, port, sender, password, recipients, body,
     msg = MIMEMultipart()
     msg['From'] = sender
     msg['To'] = ', '.join(recipients)
-    msg['Subject'] = "Test suite results"
+    msg['Subject'] = "Test suite results [automated testing system]"
     msg['Date'] = formatdate(localtime=True)
  
     if attachments is not None:
