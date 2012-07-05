@@ -12,10 +12,11 @@ __status__ = "Development"
 
 """Test suite for the run_test_suites.py module."""
 
-from cogent.util.unit_test import TestCase, main
+from unittest import main, TestCase
+
 from automated_testing.run_test_suites import (_build_email_summary,
         _build_test_execution_commands, _can_ignore, _parse_config_file,
-        _parse_email_list, _parse_email_settings)
+        _parse_email_list, _parse_email_settings, _system_call)
 
 class RunTestSuitesTests(TestCase):
     """Tests for the run_test_suites.py module."""
@@ -259,6 +260,12 @@ class RunTestSuitesTests(TestCase):
         self.assertEqual(_can_ignore(self.email_list4[0]), False)
         self.assertEqual(_can_ignore(self.email_list4[1]), False)
         self.assertEqual(_can_ignore(self.email_list4[2]), True)
+
+    def test_system_call(self):
+        """Test making system calls and capturing output."""
+        exp = ('foo\n', '', 0)
+        obs = _system_call('echo foo')
+        self.assertEqual(obs, exp)
 
 
 if __name__ == "__main__":

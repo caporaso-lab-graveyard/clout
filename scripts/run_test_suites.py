@@ -10,78 +10,91 @@ __maintainer__ = "Jai Ram Rideout"
 __email__ = "jai.rideout@gmail.com"
 __status__ = "Development"
 
-from qiime.util import (parse_command_line_parameters, make_option)
+from optparse import make_option, OptionParser, OptionGroup
+
 from automated_testing.run_test_suites import run_test_suites
 
-script_info = {}
-script_info['brief_description'] = """Runs suites of unit tests using Amazon EC2 and emails results"""
-script_info['script_description'] = """
-This script runs one or more unit test suites remotely using StarCluster/Amazon
-EC2 and emails the results to a list of recipients. The email summarizes the
-results of the test suites and includes the full output of running the test
-suites.
+script_usage = "Detailed usage examples can be found in the README.md file."
+script_description = """This script runs one or more unit test suites remotely
+using StarCluster/Amazon EC2 and emails the results to a list of recipients.
+The email summarizes the results of the test suites and includes the full
+output of running the test suites.
 
-Please see the INSTALL file for more detailed descriptions of the configuration
+Please see the README file for more detailed descriptions of the configuration
 files that are required by this script. Examples are included under the config
 directory.
 """
-script_info['script_usage'] = []
-script_info['script_usage'].append(("Execute unit test suites remotely",
-"Executes the unit test suites defined in the input configuration file as the "
-"'ubuntu' user and emails the test results to everyone in the provided email "
-"list. The default starcluster template is used (as is defined in the input "
-"starcluster config file) and the starcluster cluster tag is 'nightly_tests'.",
-"%prog -i config/test_suite_config.txt -s config/starcluster_config -u ubuntu "
-"-c nightly_tests -l config/recipients.txt -e config/email_settings.txt"))
-script_info['script_usage'].append(("Execute suites remotely using a custom "
-"starcluster cluster template",
-"Executes the test suites using a custom starcluster cluster template "
-"'test-cluster' instead of the default cluster template in the starcluster "
-"config file.",
-"%prog -i config/test_suite_config.txt -s config/starcluster_config -u ubuntu "
-"-c nightly_tests -l config/recipients.txt -e config/email_settings.txt -t "
-"test-cluster"))
-script_info['output_description']= """
-The script does not produce any output files.
-"""
 
-script_info['required_options'] = [
-    make_option('-i','--input_config', type='existing_filepath',
+parser = OptionParser(usage=script_usage, description=script_description,
+                      version=__version__)
+parser.set_defaults(verbose=True)
+
+required_group = OptionGroup(parser, 'Required Options')
+required_options = [
+    make_option('-i', '--input_config', type='string',
         help='the input configuration file describing the test suites to be '
         'executed. This is a tab-separated file with two fields. The first '
         'field is the label/name of the test suite and the second field is '
         'the command(s) to run on the remote cluster to execute the test '
         'suite'),
-    make_option('-s','--input_starcluster_config', type='existing_filepath',
+    make_option('-s', '--input_starcluster_config', type='string',
         help='the input starcluster config file. The default cluster template '
         'will be used by the script to run the test suite(s) on unless the '
         '-t option is supplied. You should only need a single-node cluster'),
-    make_option('-u','--user', type='string',
+    make_option('-u', '--user', type='string',
         help='the user to run the test suites as on the remote cluster'),
-    make_option('-c','--cluster_tag', type='string',
+    make_option('-c', '--cluster_tag', type='string',
         help='the starcluster cluster tag to use for the cluster that the '
         'test suites will run on'),
-    make_option('-l','--input_email_list', type='existing_filepath',
+    make_option('-l', '--input_email_list', type='string',
         help='the input email list file. This should be a file containing '
         'an email address on each line. Lines starting with "#" or lines that '
         'only contain whitespace or are blank will be ignored'),
-    make_option('-e','--input_email_settings', type='existing_filepath',
+    make_option('-e', '--input_email_settings', type='string',
         help='the input email settings file. This should be a file containing '
         'key/value pairs separated by a tab that tell the script how to send '
         'the email. "smtp_server", "smtp_port", "sender", and "password" must '
         'be defined')
 ]
-script_info['optional_options'] = [
-    make_option('-t','--cluster_template', type='string',
+
+required_group.add_options(required_options)
+parser.add_option_group(required_group)
+
+optional_group = OptionGroup(parser, 'Optional Options')
+optional_options = [
+    make_option('-t', '--cluster_template', type='string',
         help='the cluster template to use (defined in the starcluster config '
         'file) for running the test suite(s) on. You should only need a '
         'single-node cluster [default: starcluster config default template]',
         default=None)
 ]
-script_info['version'] = __version__
+
+optional_group.add_options(optional_options)
+parser.add_option_group(optional_group)
 
 def main():
-    option_parser, opts, args = parse_command_line_parameters(**script_info)
+    opts, args = parser.parse_args()
+
+    if opts.input_config is None:
+        parser.print_help()
+        parser.error('You must specify an input test suite configuration '
+                     'file.')
+    if opts.input_starcluster_config is None:
+        parser.print_help()
+        parser.error('You must specify an input StarCluster configuration '
+                     'file.')
+    if opts.user is None:
+        parser.print_help()
+        parser.error('You must specify a user to run the test suites as.')
+    if opts.cluster_tag is None:
+        parser.print_help()
+        parser.error('You must specify a cluster tag.')
+    if opts.input_email_list is None:
+        parser.print_help()
+        parser.error('You must specify an input list of email addresses.')
+    if opts.input_email_settings is None:
+        parser.print_help()
+        parser.error('You must specify an input email settings file.')
 
     run_test_suites(open(opts.input_config, 'U'),
             opts.input_starcluster_config, open(opts.input_email_list, 'U'),

@@ -18,9 +18,8 @@ from email.MIMEMultipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.Utils import formatdate
 from smtplib import SMTP
+from subprocess import PIPE, Popen
 from tempfile import TemporaryFile
-
-from qiime.util import get_qiime_temp_dir, qiime_system_call
 
 def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
                     user, cluster_tag, cluster_template=None):
@@ -64,8 +63,7 @@ def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
     # commands. This will automatically be deleted when it is closed or
     # garbage-collected, plus it isn't even visible in the file system on most
     # operating systems.
-    log_f = TemporaryFile(prefix='automated_testing_log', suffix='.txt',
-                          dir=get_qiime_temp_dir())
+    log_f = TemporaryFile(prefix='automated_testing_log', suffix='.txt')
 
     # Execute the commands, keeping track of stdout and stderr in a temporary
     # file for each test suite. These will be used as attachments when the
@@ -76,7 +74,7 @@ def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
     attachments = [(None, 'automated_testing_log.txt', log_f)]
     commands_status = []
     for command in commands:
-        stdout, stderr, ret_val = qiime_system_call(command[1])
+        stdout, stderr, ret_val = _system_call(command[1])
         commands_status.append((command[0], ret_val))
         log_f.write('Command:\n\n%s\n\n' % command[1])
         log_f.write('Stdout:\n\n%s\n' % stdout)
@@ -92,7 +90,7 @@ def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
             # The command is a test-suite-specific command, also log it in a
             # separate temporary file for the test suite.
             test_suite_f = TemporaryFile(prefix='automated_testing_log_%s' %
-                    command[0], suffix='.txt', dir=get_qiime_temp_dir())
+                    command[0], suffix='.txt')
             test_suite_f.write('Command:\n\n%s\n\n' % command[1])
             test_suite_f.write('Stdout:\n\n%s\n' % stdout)
             test_suite_f.write('Stderr:\n\n%s\n' % stderr)
@@ -337,3 +335,17 @@ def _can_ignore(line):
     """Returns True if the line can be ignored (comment or blank line)."""
     return False if line.strip() != '' and not line.strip().startswith('#') \
            else True
+
+def _system_call(cmd):
+    """Call cmd and return (stdout, stderr, return_value).
+    
+    This function is taken from QIIME's util module (originally named
+    'qiime_system_call'.
+    """
+    proc = Popen(cmd, shell=True, universal_newlines=True, stdout=PIPE,
+                 stderr=PIPE)
+    # Communicate pulls all stdout/stderr from the PIPEs to avoid blocking--
+    # don't remove this line!
+    stdout, stderr = proc.communicate()
+    return_value = proc.returncode
+    return stdout, stderr, return_value
