@@ -55,12 +55,20 @@ Cron Job Setup
 
 You may want to add the run_test_suites.py script to a crontab to have the test
 suites automatically run at some regular time interval. To do so, you'll need
-to set the PYTHONPATH from within the crontab. For example:
+to set the PYTHONPATH from within the crontab to tell Python where to look for
+the automated testing system code. You'll also need to add the directories
+where Python and StarCluster reside to the PATH variable:
 
     > crontab -e
 
-Add this line to the crontab:
+Add the following lines to the crontab:
 
+    PATH=/path/to/starcluster/executable/directory
     PYTHONPATH=/path/to/automated/testing/system/directory
+
+For example, if Python is in /usr/bin and StarCluster is in /usr/local/bin:
+
+    PATH=/usr/bin:/usr/local/bin
+    PYTHONPATH=/home/ubuntu/automated_testing_system
 
 Please be sure to use absolute paths for all filepaths and commands.
