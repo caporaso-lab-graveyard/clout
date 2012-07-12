@@ -72,3 +72,16 @@ For example, if Python is in /usr/bin and StarCluster is in /usr/local/bin:
     PYTHONPATH=/home/ubuntu/automated_testing_system
 
 Please be sure to use absolute paths for all filepaths and commands.
+
+There are various ways to set up your system to receive email from the cron job
+if the script produces any output (e.g. it raises an error). If the script runs
+normally, there shouldn't be any output (stdout or stderr), but it is a good
+idea to make sure that someone will receive emails from the cron system if
+something goes wrong. The following website has an excellent guide to setting
+up your system to forward emails to an external SMTP server (they show how to
+set it up for an external Gmail account):
+
+https://wiki.archlinux.org/index.php/SSMTP#Forward_to_a_Gmail_Mail_Server
+
+This was verified to work on an Amazon EC2 instance that was running the cron
+job.
