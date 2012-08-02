@@ -8,8 +8,8 @@ Required Dependencies
 
 The automated testing system requires:
 
-- Python 2.7 (other version may also work, though this is the officially tested
-and supported version)
+- Python 2.7 (other versions may also work, though this is the officially
+tested and supported version)
 
 - StarCluster (tested on 0.93.3)
 
@@ -57,11 +57,17 @@ You may want to add the run_test_suites.py script to a crontab to have the test
 suites automatically run at some regular time interval. To do so, you'll need
 to set the PYTHONPATH from within the crontab to tell Python where to look for
 the automated testing system code. You'll also need to add the directories
-where Python and StarCluster reside to the PATH variable:
+where Python and StarCluster reside to the PATH variable within the crontab, or
+run the script specifying the full path to your Python executable, and use the
+--starcluster_exe_fp option to run_test_suites.py to specify the full path to
+StarCluster.
+
+Edit your crontab with the following command:
 
     > crontab -e
 
-Add the following lines to the crontab:
+Add the following lines to the crontab, if you'd like to use environment
+variables to locate Python and StarCluster:
 
     PATH=/path/to/starcluster/executable/directory
     PYTHONPATH=/path/to/automated/testing/system/directory
@@ -72,6 +78,12 @@ For example, if Python is in /usr/bin and StarCluster is in /usr/local/bin:
     PYTHONPATH=/home/ubuntu/automated_testing_system
 
 Please be sure to use absolute paths for all filepaths and commands.
+
+Alternatively, you can remove the PATH line altogether by running the
+run_test_suites.py command like so in your crontab (using full paths to avoid
+having to set PATH):
+
+    /usr/bin/python /home/ubuntu/run_test_suites.py -i ... --starcluster_exe_fp /usr/local/bin/starcluster
 
 There are various ways to set up your system to receive email from the cron job
 if the script produces any output (e.g. it raises an error). If the script runs

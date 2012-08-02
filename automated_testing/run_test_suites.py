@@ -12,6 +12,7 @@ __status__ = "Development"
 
 """Contains functions used in the run_test_suites.py script."""
 
+import signal
 from email.Encoders import encode_base64
 from email.MIMEBase import MIMEBase
 from email.MIMEMultipart import MIMEMultipart
@@ -21,15 +22,36 @@ from smtplib import SMTP
 from subprocess import PIPE, Popen
 from tempfile import TemporaryFile
 
+# This timing code is adapted from recipes provided at:
+#   http://code.activestate.com/recipes/534115-function-timeout/
+#   http://stackoverflow.com/questions/492519/timeout-on-a-python-function-call
+class TimeExceededError(Exception):
+    pass
+
+def initiate_timeout(minutes):
+    def timeout(signum, frame):
+        raise TimeExceededError("Failed to run in allowed time (%d minutes)."
+                                % minutes)
+
+    signal.signal(signal.SIGALRM, timeout)
+    # Set the 'alarm' to go off in minutes*60 seconds
+    signal.alarm(minutes * 60)
+
+def disable_timeout():
+    # Turn off the alarm.
+    signal.alarm(0)
+
 def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
-                    user, cluster_tag, cluster_template=None):
+                    user, cluster_tag, cluster_template=None,
+                    setup_timeout=20, test_suites_timeout=240,
+                    teardown_timeout=20, sc_exe_fp='starcluster'):
     """Runs the suite(s) of tests and emails the results to the recipients.
 
     This function does not return anything. This function is not unit-tested
     because there isn't a clean way to test it since it sends an email, starts
-    up a cluster on Amazon EC2, etc. Every other private function that this
-    function calls has been extensively unit-tested (whenever possible). Thus,
-    the amount of untested code has been minimized and contained here.
+    up a cluster on Amazon EC2, etc. Nearly every other 'private' function that
+    this function calls has been extensively unit-tested (whenever possible).
+    Thus, the amount of untested code has been minimized and contained here.
 
     Arguments:
         config_f - the input configuration file describing the test suites to
@@ -47,68 +69,42 @@ def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
         cluster_template - the starcluster cluster template to use in the
             starcluster config file. If not provided, the default cluster
             template in the starcluster config file will be used
+        setup_timeout - the number of minutes to allow the cluster to be set up
+            before aborting and attempting to terminate it
+        test_suites_timeout - the number of minutes to allow *all* test suites
+            to run before terminating the cluster
+        teardown_timeout - the number of minutes to allow the cluster to be
+            terminated before aborting
+        sc_exe_fp - path to the starcluster executable
     """
+    if setup_timeout < 1 or test_suites_timeout < 1 or teardown_timeout < 1:
+        raise ValueError("The timeout (in minutes) cannot be less than 1.")
+
     # Parse the various configuration files first so that we know if there's
     # any outstanding problems with file formats before continuing.
     test_suites = _parse_config_file(config_f)
     recipients = _parse_email_list(recipients_f)
     email_settings = _parse_email_settings(email_settings_f)
 
-    # Build up a list of commands to be executed (these include launching a
+    # Get the commands that need to be executed (these include launching a
     # cluster, running the test suites, and terminating the cluster).
-    commands = _build_test_execution_commands(test_suites, sc_config_fp, user,
-                                              cluster_tag, cluster_template)
+    setup_cmds, test_suites_cmds, teardown_cmds = \
+            _build_test_execution_commands(test_suites, sc_config_fp, user,
+                                           cluster_tag, cluster_template,
+                                           sc_exe_fp)
 
-    # Create a unique temporary file to hold the results of the following
-    # commands. This will automatically be deleted when it is closed or
-    # garbage-collected, plus it isn't even visible in the file system on most
-    # operating systems.
-    log_f = TemporaryFile(prefix='automated_testing_log', suffix='.txt')
+    # Execute the commands and build up the body of an email with the
+    # summarized results as well as the output in log file attachments.
+    email_body, attachments = _execute_commands_and_build_email(
+            test_suites, setup_cmds, test_suites_cmds, teardown_cmds,
+            setup_timeout, test_suites_timeout, teardown_timeout, cluster_tag)
 
-    # Execute the commands, keeping track of stdout and stderr in a temporary
-    # file for each test suite. These will be used as attachments when the
-    # email is sent. Since the temporary files will have a randomly-generated
-    # name, we'll also specify what we want the file to be called when it is
-    # attached to the email (we don't have to worry about having unique
-    # filenames at that point).
-    attachments = [(None, 'automated_testing_log.txt', log_f)]
-    commands_status = []
-    for command in commands:
-        stdout, stderr, ret_val = _system_call(command[1])
-        commands_status.append((command[0], ret_val))
-        log_f.write('Command:\n\n%s\n\n' % command[1])
-        log_f.write('Stdout:\n\n%s\n' % stdout)
-        log_f.write('Stderr:\n\n%s\n' % stderr)
-
-        if command[0] is None:
-            # The command is a setup/teardown command, so check to make sure
-            # it succeeded. If it didn't, don't continue as there is no point
-            # in trying to run anything else.
-            if ret_val != 0:
-                break
-        else:
-            # The command is a test-suite-specific command, also log it in a
-            # separate temporary file for the test suite.
-            test_suite_f = TemporaryFile(prefix='automated_testing_log_%s' %
-                    command[0], suffix='.txt')
-            test_suite_f.write('Command:\n\n%s\n\n' % command[1])
-            test_suite_f.write('Stdout:\n\n%s\n' % stdout)
-            test_suite_f.write('Stderr:\n\n%s\n' % stderr)
-            attachments.append((command[0], '%s_results.txt' % command[0],
-                                test_suite_f))
-
-    # Build a summary of the test suites that passed and those that didn't.
-    # This will go in the body of the email.
-    summary = _build_email_summary(commands_status)
-
-    # Set our file position to the beginning for all files since we are in
-    # read/write mode and we need to read from the beginning again. Closing the
-    # file will delete it.
-    for attachment in attachments:
-        attachment[2].seek(0, 0)
+    # Send the email.
+    # TODO: this should be configurable by the user.
+    subject = "Test suite results [automated testing system]"
     _send_email(email_settings['smtp_server'], email_settings['smtp_port'],
                 email_settings['sender'], email_settings['password'],
-                recipients, summary, attachments)
+                recipients, subject, email_body, attachments)
 
 def _parse_config_file(config_f):
     """Parses and validates a configuration file describing test suites.
@@ -189,93 +185,217 @@ def _parse_email_settings(email_settings_f):
     return settings
 
 def _build_test_execution_commands(test_suites, sc_config_fp, user,
-                                   cluster_tag, cluster_template=None):
+                                   cluster_tag, cluster_template=None,
+                                   sc_exe_fp='starcluster'):
     """Builds up commands that need to be executed to run the test suites.
 
-    These commands are generally starcluster commands to start/terminate a
-    cluster, as well as execute commands over ssh to run the test suites.
+    These commands are starcluster commands to start/terminate a cluster,
+    (setup/teardown commands, respectively) as well as execute commands over
+    ssh to run the test suites (test suite commands).
 
-    Returns a list of 2-element tuples, where the first element is the test
-    suite label that the command belongs to (or None if the command is a
-    non test-suite-specific command, such as for starting or terminating the
-    cluster). The second element in the tuple will be the command string
-    itself.
-    
+    Returns a 3-element tuple containing the list of setup command strings,
+    the list of test suite command strings, and the list of teardown command
+    strings.
+
     Arguments:
         test_suites - the output of _parse_config_file()
-        sc_config_fp - the starcluster config filepath (a string)
-        user - the user to run the tests as remotely (a string)
-        cluster_tag - the cluster tag to use for the remote cluster that will
-            be created (a string)
-        cluster_template - the starcluster cluster template to use to create
-            the new remote cluster (a string). If not provided, the starcluster
-            default cluster template will be used (as defined in the
-            starcluster config file)
+        sc_config_fp - same as for run_test_suites()
+        user - same as for run_test_suites()
+        cluster_tag - same as for run_test_suites()
+        cluster_template - same as for run_test_suites()
+        sc_exe_fp - same as for run_test_suites()
     """
-    # Build up our list of commands to run (commands that are independent of a
-    # test suite run). We also need to keep track of whether the output of each
-    # command should be put in its own test-suite-specific email attachment, or
-    # whether it is a general logging command, such as the one below.
-    commands = []
-    starcluster_start_command = "starcluster -c %s start " % sc_config_fp
+    setup_cmds, test_suite_cmds, teardown_cmds = [], [], []
+
+    sc_start_cmd = "%s -c %s start " % (sc_exe_fp, sc_config_fp)
     if cluster_template is not None:
-        starcluster_start_command += "-c %s " % cluster_template
-    starcluster_start_command += "%s" % cluster_tag
-    commands.append((None, starcluster_start_command))
+        sc_start_cmd += "-c %s " % cluster_template
+    sc_start_cmd += "%s" % cluster_tag
+    setup_cmds.append(sc_start_cmd)
 
-    for test_suite in test_suites:
-        test_suite_name, test_suite_exec = test_suite
-
+    for test_suite_name, test_suite_exec in test_suites:
         # To have the next command work without getting prompted to accept the
         # new host, the user must have 'StrictHostKeyChecking no' in their SSH
         # config (on the local machine). TODO: try to get starcluster devs to
         # add this feature to sshmaster.
-        commands.append((test_suite_name,
-                         "starcluster -c %s sshmaster -u %s %s '%s'" %
-                         (sc_config_fp, user, cluster_tag, test_suite_exec)))
+        test_suite_cmds.append("%s -c %s sshmaster -u %s %s '%s'" %
+                (sc_exe_fp, sc_config_fp, user, cluster_tag, test_suite_exec))
 
     # The second -c tells starcluster not to prompt us for termination
     # confirmation.
-    commands.append((None, "starcluster -c %s terminate -c %s" %
-                           (sc_config_fp, cluster_tag)))
-    return commands
+    teardown_cmds.append("%s -c %s terminate -c %s" % (sc_exe_fp, sc_config_fp,
+                                                       cluster_tag))
+    return setup_cmds, test_suite_cmds, teardown_cmds
 
-def _build_email_summary(commands_status):
+def _execute_commands_and_build_email(test_suites, setup_cmds,
+                                      test_suites_cmds, teardown_cmds,
+                                      setup_timeout, test_suites_timeout,
+                                      teardown_timeout, cluster_tag):
+    """Executes the test suite commands and builds the body of an email.
+
+    Returns the body of an email containing the summarized results and any
+    error message or issues that should be brought to the recipient's
+    attention, and a list of attachments, which are the log files from running
+    the commands.
+
+    Arguments:
+        test_suites - the output of _parse_config_file()
+        setup_cmds - the output of _build_test_execution_commands()
+        test_suites_cmds - the output of _build_test_execution_commands()
+        teardown_cmds - the output of _build_test_execution_commands()
+        setup_timeout - same as for run_test_suites()
+        test_suites_timeout - same as for run_test_suites()
+        teardown_timeout - same as for run_test_suites()
+        cluster_tag - same as for run_test_suites()
+    """
+    email_body = ""
+    attachments = []
+
+    # Create a unique temporary file to hold the results of all commands.
+    log_f = TemporaryFile(prefix='automated_testing_log', suffix='.txt')
+    attachments.append(('automated_testing_log.txt', log_f))
+
+    # Build up the body of the email as we execute the commands. First, execute
+    # the setup commands.
+    setup_cmds_succeeded = _execute_commands(setup_cmds, log_f, setup_timeout,
+                                             stop_on_first_failure=True)[0]
+    if setup_cmds_succeeded is None:
+        email_body += "The maximum allowable cluster setup time of " + \
+                      "%d " % setup_timeout
+        email_body += "minutes was exceeded.\n\n"
+    elif not setup_cmds_succeeded:
+        email_body += "There were problems in starting the " + \
+                "remote cluster while preparing to execute the " + \
+                "test suite(s). Please check the attached log for " + \
+                "more details.\n\n"
+    else:
+        # Execute each test suite command, keeping track of stdout and stderr
+        # in a temporary file. These will be used as attachments when the
+        # email is sent. Since the temporary files will have randomly-generated
+        # names, we'll also specify what we want the file to be called when it
+        # is attached to the email (we don't have to worry about having unique
+        # filenames at that point).
+        test_suites_cmds_succeeded, test_suites_cmds_status = \
+                _execute_commands(test_suites_cmds, log_f, test_suites_timeout,
+                                  log_individual_cmds=True)
+
+        # It is okay if there are fewer test suites that got executed than
+        # there were input test suites (which is possible if we encounter a
+        # timeout). Just report the ones that finished.
+        label_to_ret_val = []
+        for (label, cmd), (test_suite_log_f, ret_val) in zip(test_suites,
+                test_suites_cmds_status):
+            label_to_ret_val.append((label, ret_val))
+            attachments.append(('%s_results.txt' % label, test_suite_log_f))
+
+        # Build a summary of the test suites that passed and those that didn't.
+        email_body += _build_email_summary(label_to_ret_val)
+
+        if test_suites_cmds_succeeded is None:
+            untested_suites = [label for label, cmd in \
+                               test_suites[len(test_suites_cmds_status):]]
+            email_body += "The maximum allowable time of " + \
+                          "%d " % test_suites_timeout
+            email_body += "minutes for all test suites to run was " + \
+                          "exceeded. The following test suites were not " + \
+                          "tested: %s\n\n" % ', '.join(untested_suites)
+
+    # Lastly, execute the teardown commands.
+    cluster_termination_msg = "IMPORTANT: You should check that the " + \
+            "cluster labelled with the tag '" + cluster_tag + "' was " + \
+            "properly terminated. If not, you should manually terminate " + \
+            "it.\n\n"
+    teardown_cmds_succeeded = _execute_commands(teardown_cmds, log_f,
+            teardown_timeout)[0]
+    if teardown_cmds_succeeded is None:
+        email_body += "The maximum allowable cluster termination time of " + \
+                      "%d " % teardown_timeout
+        email_body += "minutes was exceeded.\n\n%s" % cluster_termination_msg
+    elif not teardown_cmds_succeeded:
+        email_body += "There were problems in terminating the " + \
+                "remote cluster. Please check the attached log for " + \
+                "more details.\n\n%s" % cluster_termination_msg
+
+    # Set our file position to the beginning for all attachments since we are
+    # in read/write mode and we need to read from the beginning again. Closing
+    # the file will delete it.
+    for attachment in attachments:
+        attachment[1].seek(0, 0)
+
+    return email_body, attachments
+
+def _execute_commands(cmds, log_f, timeout, stop_on_first_failure=False,
+                      log_individual_cmds=False):
+    """Executes commands and logs output to a file.
+
+    Returns a 2-element tuple where the first element is a logical, where True
+    indicates all commands succeeded, False indicates at least one command
+    failed, and None indicates a timeout occurred. The second element of the
+    tuple will be an empty list if log_individual_cmds is False, otherwise will
+    be filled with 2-element tuples containing the individual TemporaryFile log
+    files for each command, and the command's return code.
+
+    Arguments:
+        cmds - list of commands to run
+        log_f - the file to write command output to
+        timeout - the number of minutes to allow all of the commands to run
+            collectively before aborting and returning the current results
+        stop_on_first_failure - if True, will stop running all other commands
+            once a command has a nonzero exit code
+        log_individual_cmds - if True, will create a TemporaryFile for each
+            command that is run and log the output separately (as well as to
+            log_f). Will also keep track of the return values for each command
+    """
+    cmds_succeeded = True
+    individual_cmds_status = []
+    initiate_timeout(timeout)
+
+    try:
+        for cmd in cmds:
+            stdout, stderr, ret_val = _system_call(cmd)
+            cmd_str = 'Command:\n\n%s\n\n' % cmd
+            stdout_str = 'Stdout:\n\n%s\n' % stdout
+            stderr_str = 'Stderr:\n\n%s\n' % stderr
+            log_f.write(cmd_str + stdout_str + stderr_str)
+
+            if log_individual_cmds:
+                individual_cmd_log_f = TemporaryFile(
+                        prefix='automated_testing_log', suffix='.txt')
+                individual_cmd_log_f.write(cmd_str + stdout_str + stderr_str)
+                individual_cmds_status.append((individual_cmd_log_f, ret_val))
+
+            if ret_val != 0:
+                cmds_succeeded = False
+                if stop_on_first_failure:
+                    break
+    except TimeExceededError:
+        disable_timeout()
+        cmds_succeeded = None
+    return cmds_succeeded, individual_cmds_status
+
+def _build_email_summary(test_suites_status):
     """Builds up a string suitable for the body of an email message.
 
     Returns a string containing a summary of the testing results for each of
     the test suites. The summary will list the test suite name and whether it
     passed or not (which is dependent on the status of the return code of the
-    test suite). The summary will also indicate if there were any other
-    problems in setting up the environment to run the test suite(s).
+    test suite).
 
     Arguments:
-        commands_status - a list of 2-element tuples, where the first
-        element is the test suite name/label (or None if the command is not
-        associated with a particular test suite, but rather in the
-        setup/teardown of the environment to allow for the test suites to run).
-        The second element is the return value of the command that was run. A
-        non-zero return value indicates that something went wrong or the test
-        suite didn't pass
+        test_suites_status - a list of 2-element tuples, where the first
+        element is the test suite label and the second element is the return
+        value of the command that was run for the test suite. A non-zero return
+        value indicates that something went wrong or the test suite didn't pass
     """
     summary = ''
-    encountered_log_failure = False
-    for test_suite_label, ret_val in commands_status:
-        if test_suite_label is not None:
-            # We have the return value of a test suite command.
-            summary += test_suite_label + ': '
-            summary += 'Pass\n' if ret_val == 0 else 'Fail\n'
-        else:
-            # We have the return value of a setup/teardown command.
-            if ret_val != 0 and not encountered_log_failure:
-                encountered_log_failure = True
-                summary += "There were problems in setting up or tearing " + \
-                           "down the remote cluster while preparing to " + \
-                           "execute the test suite(s). Please check the " + \
-                           "attached log for more details.\n\n"
+    for test_suite_label, ret_val in test_suites_status:
+        summary += test_suite_label + ': '
+        summary += 'Pass\n' if ret_val == 0 else 'Fail\n'
+    if summary != '':
+        summary += '\n'
     return summary
 
-def _send_email(host, port, sender, password, recipients, body,
+def _send_email(host, port, sender, password, recipients, subject, body,
                attachments=None):
     """Sends an email (optionally with attachments).
 
@@ -293,26 +413,21 @@ def _send_email(host, port, sender, password, recipients, body,
             will be used as the username when logging into the SMTP server
         password - the password to log into the SMTP server with
         recipients - a list of email addresses to send the email to
-        body - a string that will be the body of the email message
-        attachments - a list of 3-element tuples, where the first element is
-            the test suite name/label that the email attachment is related to
-            (or None if the attachment is an overall log file for all of the
-            commands that were run). The second element is a string containing
+        subject - the subject of the email
+        body - the body of the email
+        attachments - a list of 2-element tuples, where the first element is
             the filename that will be used for the email attachment (as the
-            recipient will see it), and the third element is a file containing
-            the stdout/stderr of the test suite (or all test suites if it is
-            the log file attachment).  This last element is the actual content
-            of the attachment. If this parameter is not provided, no
-            attachments will be included with the message.
+            recipient will see it), and the second element is the file to be
+            attached
     """
     msg = MIMEMultipart()
     msg['From'] = sender
     msg['To'] = ', '.join(recipients)
-    msg['Subject'] = "Test suite results [automated testing system]"
+    msg['Subject'] = subject
     msg['Date'] = formatdate(localtime=True)
  
     if attachments is not None:
-        for test_suite_label, attachment_name, attachment_f in attachments:
+        for attachment_name, attachment_f in attachments:
             part = MIMEBase('application', 'octet-stream')
             part.set_payload(attachment_f.read())
             encode_base64(part)
