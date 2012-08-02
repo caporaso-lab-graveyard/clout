@@ -12,6 +12,7 @@ __status__ = "Development"
 
 """Test suite for the run_test_suites.py module."""
 
+from re import sub
 from tempfile import TemporaryFile
 from unittest import main, TestCase
 
@@ -261,19 +262,23 @@ class RunTestSuitesTests(TestCase):
         self.assertEqual(len(obs[1]), 2)
         name, log_f = obs[1][0]
         self.assertEqual(name, 'automated_testing_log.txt')
-        self.assertEqual(log_f.read(),
+
+        # We can't directly test the error message returned by /bin/sh because
+        # this will differ between platforms (tested on Mac OS X and Ubuntu).
+        # So strip out the error message, but keep everything else.
+        self.assertEqual(sub('Stderr:\n\n.*\n\n', 'Stderr:\n\n\n\n',
+                             log_f.read()),
             "Command:\n\necho setting up\n\nStdout:\n\nsetting up\n\n"
             "Stderr:\n\n\n"
-            "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n/bin/sh: "
-            "foobarbaz: command not found\n\n"
+            "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n\n\n"
             "Command:\n\necho tearing down\n\nStdout:\n\ntearing down\n\n"
             "Stderr:\n\n\n")
 
         name, log_f = obs[1][1]
         self.assertEqual(name, 'Test1_results.txt')
-        self.assertEqual(log_f.read(),
-            "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n/bin/sh: "
-            "foobarbaz: command not found\n\n")
+        self.assertEqual(sub('Stderr:\n\n.*\n\n', 'Stderr:\n\n\n\n',
+                             log_f.read()),
+            "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n\n\n")
 
     def test_execute_commands_and_build_email_setup_failure(self):
         """Test functions correctly when a setup command fails."""
@@ -290,9 +295,9 @@ class RunTestSuitesTests(TestCase):
         self.assertEqual(len(obs[1]), 1)
         name, log_f = obs[1][0]
         self.assertEqual(name, 'automated_testing_log.txt')
-        self.assertEqual(log_f.read(),
-            "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n/bin/sh: "
-            "foobarbaz: command not found\n\n"
+        self.assertEqual(sub('Stderr:\n\n.*\n\n', 'Stderr:\n\n\n\n',
+                             log_f.read()),
+            "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n\n\n"
             "Command:\n\necho tearing down\n\nStdout:\n\ntearing down\n\n"
             "Stderr:\n\n\n")
 
@@ -315,11 +320,10 @@ class RunTestSuitesTests(TestCase):
         self.assertEqual(len(obs[1]), 1)
         name, log_f = obs[1][0]
         self.assertEqual(name, 'automated_testing_log.txt')
-        self.assertEqual(log_f.read(),
-            "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n/bin/sh: "
-            "foobarbaz: command not found\n\n"
-            "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n/bin/sh: "
-            "foobarbaz: command not found\n\n")
+        self.assertEqual(sub('Stderr:\n\n.*\n\n', 'Stderr:\n\n\n\n',
+                             log_f.read()),
+            "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n\n\n"
+            "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n\n\n")
 
     def test_execute_commands_and_build_email_test_suite_timeout(self):
         """Test functions correctly when a test suite timeout occurs."""
@@ -414,10 +418,11 @@ class RunTestSuitesTests(TestCase):
         self.assertEqual(obs, exp)
 
         exp = ("Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
-               "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n/bin/sh: "
-               "foobarbaz: command not found\n\n")
+               "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n\n\n")
         log_f.seek(0, 0)
-        obs = log_f.read()
+
+        obs = sub('Stderr:\n\n.*\n\n', 'Stderr:\n\n\n\n',
+                             log_f.read())
         self.assertEqual(obs, exp)
 
     def test_execute_commands_stop_on_first_failure(self):
@@ -440,10 +445,10 @@ class RunTestSuitesTests(TestCase):
         obs = _execute_commands(['foobarbaz', 'echo foo'], log_f, 1, True)
         self.assertEqual(obs, exp)
 
-        exp = ("Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n/bin/sh: "
-               "foobarbaz: command not found\n\n")
+        exp = ("Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n\n\n")
         log_f.seek(0, 0)
-        obs = log_f.read()
+        obs = sub('Stderr:\n\n.*\n\n', 'Stderr:\n\n\n\n',
+                             log_f.read())
         self.assertEqual(obs, exp)
 
         # Second command fails.
@@ -453,10 +458,10 @@ class RunTestSuitesTests(TestCase):
         self.assertEqual(obs, exp)
 
         exp = ("Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
-               "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n/bin/sh: "
-               "foobarbaz: command not found\n\n")
+               "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n\n\n")
         log_f.seek(0, 0)
-        obs = log_f.read()
+        obs = sub('Stderr:\n\n.*\n\n', 'Stderr:\n\n\n\n',
+                             log_f.read())
         self.assertEqual(obs, exp)
 
     def test_execute_commands_log_individual_cmds(self):
@@ -497,18 +502,18 @@ class RunTestSuitesTests(TestCase):
         self.assertEqual(obs[1][0][1], 127)
         self.assertEqual(obs[1][1][1], 0)
 
-        exp = ("Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n/bin/sh: "
-               "foobarbaz: command not found\n\n"
+        exp = ("Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n\n\n"
                "Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n")
         log_f.seek(0, 0)
-        log_obs = log_f.read()
+        log_obs = sub('Stderr:\n\n.*\n\n', 'Stderr:\n\n\n\n',
+                             log_f.read())
         self.assertEqual(log_obs, exp)
 
-        exp = ("Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n/bin/sh: "
-              "foobarbaz: command not found\n\n")
+        exp = ("Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n\n\n")
         log_f = obs[1][0][0]
         log_f.seek(0, 0)
-        log_obs = log_f.read()
+        log_obs = sub('Stderr:\n\n.*\n\n', 'Stderr:\n\n\n\n',
+                             log_f.read())
         self.assertEqual(log_obs, exp)
 
         exp = "Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
