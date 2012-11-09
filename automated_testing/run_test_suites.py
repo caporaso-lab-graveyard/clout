@@ -21,30 +21,12 @@ from email.Utils import formatdate
 from smtplib import SMTP
 from subprocess import PIPE, Popen
 from tempfile import TemporaryFile
-
-# This timing code is adapted from recipes provided at:
-#   http://code.activestate.com/recipes/534115-function-timeout/
-#   http://stackoverflow.com/questions/492519/timeout-on-a-python-function-call
-class TimeExceededError(Exception):
-    pass
-
-def initiate_timeout(minutes):
-    def timeout(signum, frame):
-        raise TimeExceededError("Failed to run in allowed time (%d minutes)."
-                                % minutes)
-
-    signal.signal(signal.SIGALRM, timeout)
-    # Set the 'alarm' to go off in minutes*60 seconds
-    signal.alarm(minutes * 60)
-
-def disable_timeout():
-    # Turn off the alarm.
-    signal.alarm(0)
+from threading import Lock, Thread
 
 def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
                     user, cluster_tag, cluster_template=None,
-                    setup_timeout=20, test_suites_timeout=240,
-                    teardown_timeout=20, sc_exe_fp='starcluster'):
+                    setup_timeout=20.0, test_suites_timeout=240.0,
+                    teardown_timeout=20.0, sc_exe_fp='starcluster'):
     """Runs the suite(s) of tests and emails the results to the recipients.
 
     This function does not return anything. This function is not unit-tested
@@ -70,15 +52,18 @@ def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
             starcluster config file. If not provided, the default cluster
             template in the starcluster config file will be used
         setup_timeout - the number of minutes to allow the cluster to be set up
-            before aborting and attempting to terminate it
+            before aborting and attempting to terminate it. Must be a float, to
+            allow for fractions of a minute
         test_suites_timeout - the number of minutes to allow *all* test suites
-            to run before terminating the cluster
+            to run before terminating the cluster. Must be a float, to allow
+            for fractions of a minute
         teardown_timeout - the number of minutes to allow the cluster to be
-            terminated before aborting
+            terminated before aborting. Must be a float, to allow for fractions
+            of a minute
         sc_exe_fp - path to the starcluster executable
     """
-    if setup_timeout < 1 or test_suites_timeout < 1 or teardown_timeout < 1:
-        raise ValueError("The timeout (in minutes) cannot be less than 1.")
+    if setup_timeout <= 0 or test_suites_timeout <= 0 or teardown_timeout <= 0:
+        raise ValueError("The timeout (in minutes) must be greater than zero.")
 
     # Parse the various configuration files first so that we know if there's
     # any outstanding problems with file formats before continuing.
@@ -260,14 +245,12 @@ def _execute_commands_and_build_email(test_suites, setup_cmds,
     setup_cmds_succeeded = _execute_commands(setup_cmds, log_f, setup_timeout,
                                              stop_on_first_failure=True)[0]
     if setup_cmds_succeeded is None:
-        email_body += "The maximum allowable cluster setup time of " + \
-                      "%d " % setup_timeout
-        email_body += "minutes was exceeded.\n\n"
+        email_body += ("The maximum allowable cluster setup time of %s "
+                       "minutes was exceeded.\n\n" % str(setup_timeout))
     elif not setup_cmds_succeeded:
-        email_body += "There were problems in starting the " + \
-                "remote cluster while preparing to execute the " + \
-                "test suite(s). Please check the attached log for " + \
-                "more details.\n\n"
+        email_body += ("There were problems in starting the remote cluster "
+                       "while preparing to execute the test suite(s). Please "
+                       "check the attached log for more details.\n\n")
     else:
         # Execute each test suite command, keeping track of stdout and stderr
         # in a temporary file. These will be used as attachments when the
@@ -292,29 +275,29 @@ def _execute_commands_and_build_email(test_suites, setup_cmds,
         email_body += _build_email_summary(label_to_ret_val)
 
         if test_suites_cmds_succeeded is None:
-            untested_suites = [label for label, cmd in \
+            untested_suites = [label for label, cmd in
                                test_suites[len(test_suites_cmds_status):]]
-            email_body += "The maximum allowable time of " + \
-                          "%d " % test_suites_timeout
-            email_body += "minutes for all test suites to run was " + \
-                          "exceeded. The following test suites were not " + \
-                          "tested: %s\n\n" % ', '.join(untested_suites)
+            email_body += ("The maximum allowable time of %s minutes for all "
+                           "test suites to run was exceeded. The following "
+                           "test suites were not tested: %s\n\n" %
+                           (str(test_suites_timeout),
+                            ', '.join(untested_suites)))
 
     # Lastly, execute the teardown commands.
-    cluster_termination_msg = "IMPORTANT: You should check that the " + \
-            "cluster labelled with the tag '" + cluster_tag + "' was " + \
-            "properly terminated. If not, you should manually terminate " + \
-            "it.\n\n"
+    cluster_termination_msg = ("IMPORTANT: You should check that the cluster "
+                               "labelled with the tag '%s' was properly "
+                               "terminated. If not, you should manually "
+                               "terminate it.\n\n" % cluster_tag)
     teardown_cmds_succeeded = _execute_commands(teardown_cmds, log_f,
-            teardown_timeout)[0]
+                                                str(teardown_timeout))[0]
     if teardown_cmds_succeeded is None:
-        email_body += "The maximum allowable cluster termination time of " + \
-                      "%d " % teardown_timeout
-        email_body += "minutes was exceeded.\n\n%s" % cluster_termination_msg
+        email_body += ("The maximum allowable cluster termination time of "
+                       "%s minutes was exceeded.\n\n%s" %
+                       (str(teardown_timeout), cluster_termination_msg))
     elif not teardown_cmds_succeeded:
-        email_body += "There were problems in terminating the " + \
-                "remote cluster. Please check the attached log for " + \
-                "more details.\n\n%s" % cluster_termination_msg
+        email_body += ("There were problems in terminating the remote "
+                       "cluster. Please check the attached log for more "
+                       "details.\n\n%s" % cluster_termination_msg)
 
     # Set our file position to the beginning for all attachments since we are
     # in read/write mode and we need to read from the beginning again. Closing
@@ -339,20 +322,44 @@ def _execute_commands(cmds, log_f, timeout, stop_on_first_failure=False,
         cmds - list of commands to run
         log_f - the file to write command output to
         timeout - the number of minutes to allow all of the commands to run
-            collectively before aborting and returning the current results
+            collectively before aborting and returning the current results.
+            Must be a float, to allow for fractions of a minute
         stop_on_first_failure - if True, will stop running all other commands
             once a command has a nonzero exit code
         log_individual_cmds - if True, will create a TemporaryFile for each
             command that is run and log the output separately (as well as to
             log_f). Will also keep track of the return values for each command
     """
-    cmds_succeeded = True
+    cmds_succeeded = [True]
     individual_cmds_status = []
-    initiate_timeout(timeout)
+    running_process = [None, Lock()]
+    timeout_occurred = [False, Lock()]
 
-    try:
+    def run_cmds():
         for cmd in cmds:
-            stdout, stderr, ret_val = _system_call(cmd)
+            with timeout_occurred[1]:
+                if timeout_occurred[0]:
+                    cmds_succeeded[0] = None
+                    break
+
+            with running_process[1]:
+                # shell=False is important because it may not terminate
+                # correctly otherwise (plus is less secure).
+                # TODO figure out issue with shell=False and cmd.split(),
+                # update test expected out since interruppted commands can
+                # now be reported instead of assumed
+                proc = Popen(cmd, shell=True, universal_newlines=True,
+                             stdout=PIPE, stderr=PIPE)
+                running_process[0] = proc
+
+            # Communicate pulls all stdout/stderr from the PIPEs to avoid
+            # blocking-- don't remove this line! This call blocks.
+            stdout, stderr = proc.communicate()
+            ret_val = proc.returncode
+
+            with running_process[1]:
+                running_process[0] = None
+
             cmd_str = 'Command:\n\n%s\n\n' % cmd
             stdout_str = 'Stdout:\n\n%s\n' % stdout
             stderr_str = 'Stderr:\n\n%s\n' % stderr
@@ -365,13 +372,31 @@ def _execute_commands(cmds, log_f, timeout, stop_on_first_failure=False,
                 individual_cmds_status.append((individual_cmd_log_f, ret_val))
 
             if ret_val != 0:
-                cmds_succeeded = False
-                if stop_on_first_failure:
+                cmds_succeeded[0] = False
+
+            with timeout_occurred[1]:
+                if timeout_occurred[0]:
+                    cmds_succeeded[0] = None
+
+                if timeout_occurred[0] or \
+                   (not cmds_succeeded[0] and stop_on_first_failure):
                     break
-    except TimeExceededError:
-        disable_timeout()
-        cmds_succeeded = None
-    return cmds_succeeded, individual_cmds_status
+
+    cmd_runner_thread = Thread(target=run_cmds)
+    cmd_runner_thread.start()
+    cmd_runner_thread.join(float(timeout) * 60.0)
+
+    if cmd_runner_thread.is_alive():
+        # Timeout occurred, so terminate the process.
+        with timeout_occurred[1]:
+            timeout_occurred[0] = True
+
+        with running_process[1]:
+            if running_process[0] is not None:
+                running_process[0].terminate()
+        cmd_runner_thread.join()
+
+    return cmds_succeeded[0], individual_cmds_status
 
 def _build_email_summary(test_suites_status):
     """Builds up a string suitable for the body of an email message.
