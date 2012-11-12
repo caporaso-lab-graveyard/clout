@@ -327,15 +327,17 @@ class RunTestSuitesTests(TestCase):
 
     def test_execute_commands_and_build_email_test_suite_timeout(self):
         """Test functions correctly when a test suite timeout occurs."""
+        # Test a timeout that occurs in the first test suite to run.
         obs = _execute_commands_and_build_email(
-            [['Test1', 'echo foo'], ['Test2', 'sleep 65 && echo bar']],
+            [['Test1', 'echo foo && sleep 5'], ['Test2', 'echo bar']],
             ['echo setting up'],
-            ['echo foo', 'sleep 65 && echo bar'],
+            ['echo foo && sleep 5', 'echo bar'],
             ['echo tearing down'],
-            1, 1, 1, 'test-cluster-tag')
-        self.assertEqual(obs[0], 'Test1: Pass\n\nThe maximum allowable time '
-        'of 1 minutes for all test suites to run was exceeded. The following '
-        'test suites were not tested: Test2\n\n')
+            1, 0.01, 1, 'test-cluster-tag')
+        self.assertEqual(obs[0], 'Test1: Fail\n\nThe maximum allowable time '
+            'of 0.01 minute(s) for all test suites to run was exceeded. The '
+            'timeout occurred while running the Test1 test suite. The '
+            'following test suites were not tested: Test2\n\n')
 
         self.assertEqual(len(obs[1]), 2)
         name, log_f = obs[1][0]
@@ -343,7 +345,37 @@ class RunTestSuitesTests(TestCase):
         self.assertEqual(log_f.read(),
             "Command:\n\necho setting up\n\nStdout:\n\nsetting up\n\n"
             "Stderr:\n\n\n"
+            "Command:\n\necho foo && sleep 5\n\n"
+            "Stdout:\n\nfoo\n\nStderr:\n\n\n"
+            "Command:\n\necho tearing down\n\nStdout:\n\ntearing down\n\n"
+            "Stderr:\n\n\n")
+
+        name, log_f = obs[1][1]
+        self.assertEqual(name, 'Test1_results.txt')
+        self.assertEqual(log_f.read(),
+            "Command:\n\necho foo && sleep 5\n\n"
+            "Stdout:\n\nfoo\n\nStderr:\n\n\n")
+
+        # Test a timeout that occurs in the last test suite to run.
+        obs = _execute_commands_and_build_email(
+            [['Test1', 'echo foo'], ['Test2', 'sleep 5 && echo bar']],
+            ['echo setting up'],
+            ['echo foo', 'sleep 5 && echo bar'],
+            ['echo tearing down'],
+            1, 0.01, 1, 'test-cluster-tag')
+        self.assertEqual(obs[0], 'Test1: Pass\nTest2: Fail\n\nThe maximum '
+            'allowable time of 0.01 minute(s) for all test suites to run was '
+            'exceeded. The timeout occurred while running the Test2 test '
+            'suite.')
+
+        self.assertEqual(len(obs[1]), 3)
+        name, log_f = obs[1][0]
+        self.assertEqual(name, 'automated_testing_log.txt')
+        self.assertEqual(log_f.read(),
+            "Command:\n\necho setting up\n\nStdout:\n\nsetting up\n\n"
+            "Stderr:\n\n\n"
             "Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
+            "Command:\n\nsleep 5 && echo bar\n\nStdout:\n\n\nStderr:\n\n\n"
             "Command:\n\necho tearing down\n\nStdout:\n\ntearing down\n\n"
             "Stderr:\n\n\n")
 
@@ -352,23 +384,29 @@ class RunTestSuitesTests(TestCase):
         self.assertEqual(log_f.read(),
             "Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n")
 
+        name, log_f = obs[1][2]
+        self.assertEqual(name, 'Test2_results.txt')
+        self.assertEqual(log_f.read(),
+            "Command:\n\nsleep 5 && echo bar\n\nStdout:\n\n\nStderr:\n\n\n")
+
     def test_execute_commands_and_build_email_setup_timeout(self):
         """Test functions correctly when a setup timeout occurs."""
         obs = _execute_commands_and_build_email(
             [['Test1', 'echo foo']],
-            ['echo setting up && sleep 65'],
+            ['echo setting up && sleep 5'],
             ['echo foo'],
             ['echo tearing down'],
-            1, 1, 1, 'test-cluster-tag')
+            0.01, 1, 1, 'test-cluster-tag')
         self.assertEqual(obs[0], 'The maximum allowable cluster setup time of '
-        '1 minutes was exceeded.\n\n')
+        '0.01 minute(s) was exceeded.\n\n')
 
         self.assertEqual(len(obs[1]), 1)
         name, log_f = obs[1][0]
         self.assertEqual(name, 'automated_testing_log.txt')
         self.assertEqual(log_f.read(),
-            "Command:\n\necho tearing down\n\nStdout:\n\ntearing down\n\n"
-            "Stderr:\n\n\n")
+            "Command:\n\necho setting up && sleep 5\n\nStdout:\n\nsetting up\n"
+            "\nStderr:\n\n\nCommand:\n\necho tearing down\n\nStdout:\n\n"
+            "tearing down\n\nStderr:\n\n\n")
 
     def test_execute_commands_and_build_email_teardown_timeout(self):
         """Test functions correctly when a teardown timeout occurs."""
@@ -376,11 +414,11 @@ class RunTestSuitesTests(TestCase):
             [['Test1', 'echo foo']],
             ['echo setting up'],
             ['echo foo'],
-            ['echo tearing down && sleep 65'],
-            1, 1, 1, 'test-cluster-tag')
+            ['echo tearing down && sleep 5'],
+            1, 1, 0.01, 'test-cluster-tag')
         self.assertEqual(obs[0], "Test1: Pass\n\nThe maximum allowable "
-        "cluster termination time of 1 minutes was exceeded.\n\nIMPORTANT: "
-        "You should check that the cluster labelled with the tag "
+        "cluster termination time of 0.01 minute(s) was exceeded.\n\n"
+        "IMPORTANT: You should check that the cluster labelled with the tag "
         "'test-cluster-tag' was properly terminated. If not, you should "
         "manually terminate it.\n\n")
 
@@ -388,9 +426,10 @@ class RunTestSuitesTests(TestCase):
         name, log_f = obs[1][0]
         self.assertEqual(name, 'automated_testing_log.txt')
         self.assertEqual(log_f.read(),
-            "Command:\n\necho setting up\n\nStdout:\n\nsetting up\n\n"
-            "Stderr:\n\n\n"
-            "Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n")
+            "Command:\n\necho setting up\n\nStdout:\n\nsetting up\n\nStderr:\n"
+            "\n\nCommand:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
+            "Command:\n\necho tearing down && sleep 5\n\nStdout:\n\ntearing "
+            "down\n\nStderr:\n\n\n")
 
         name, log_f = obs[1][1]
         self.assertEqual(name, 'Test1_results.txt')

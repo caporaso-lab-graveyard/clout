@@ -12,12 +12,13 @@ __status__ = "Development"
 
 """Contains functions used in the run_test_suites.py script."""
 
-import signal
+from signal import SIGTERM
 from email.Encoders import encode_base64
 from email.MIMEBase import MIMEBase
 from email.MIMEMultipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.Utils import formatdate
+from os import killpg, setsid
 from smtplib import SMTP
 from subprocess import PIPE, Popen
 from tempfile import TemporaryFile
@@ -246,7 +247,7 @@ def _execute_commands_and_build_email(test_suites, setup_cmds,
                                              stop_on_first_failure=True)[0]
     if setup_cmds_succeeded is None:
         email_body += ("The maximum allowable cluster setup time of %s "
-                       "minutes was exceeded.\n\n" % str(setup_timeout))
+                       "minute(s) was exceeded.\n\n" % str(setup_timeout))
     elif not setup_cmds_succeeded:
         email_body += ("There were problems in starting the remote cluster "
                        "while preparing to execute the test suite(s). Please "
@@ -266,8 +267,8 @@ def _execute_commands_and_build_email(test_suites, setup_cmds,
         # there were input test suites (which is possible if we encounter a
         # timeout). Just report the ones that finished.
         label_to_ret_val = []
-        for (label, cmd), (test_suite_log_f, ret_val) in zip(test_suites,
-                test_suites_cmds_status):
+        for (label, cmd), (test_suite_log_f, ret_val) in \
+                zip(test_suites, test_suites_cmds_status):
             label_to_ret_val.append((label, ret_val))
             attachments.append(('%s_results.txt' % label, test_suite_log_f))
 
@@ -275,13 +276,17 @@ def _execute_commands_and_build_email(test_suites, setup_cmds,
         email_body += _build_email_summary(label_to_ret_val)
 
         if test_suites_cmds_succeeded is None:
+            timeout_test_suite = \
+                    test_suites[len(test_suites_cmds_status) - 1][0]
             untested_suites = [label for label, cmd in
                                test_suites[len(test_suites_cmds_status):]]
-            email_body += ("The maximum allowable time of %s minutes for all "
-                           "test suites to run was exceeded. The following "
-                           "test suites were not tested: %s\n\n" %
-                           (str(test_suites_timeout),
-                            ', '.join(untested_suites)))
+            email_body += ("The maximum allowable time of %s minute(s) for "
+                           "all test suites to run was exceeded. The timeout "
+                           "occurred while running the %s test suite." %
+                           (str(test_suites_timeout), timeout_test_suite))
+            if untested_suites:
+                email_body += (" The following test suites were not tested: "
+                               "%s\n\n" % ', '.join(untested_suites))
 
     # Lastly, execute the teardown commands.
     cluster_termination_msg = ("IMPORTANT: You should check that the cluster "
@@ -292,7 +297,7 @@ def _execute_commands_and_build_email(test_suites, setup_cmds,
                                                 str(teardown_timeout))[0]
     if teardown_cmds_succeeded is None:
         email_body += ("The maximum allowable cluster termination time of "
-                       "%s minutes was exceeded.\n\n%s" %
+                       "%s minute(s) was exceeded.\n\n%s" %
                        (str(teardown_timeout), cluster_termination_msg))
     elif not teardown_cmds_succeeded:
         email_body += ("There were problems in terminating the remote "
@@ -335,26 +340,26 @@ def _execute_commands(cmds, log_f, timeout, stop_on_first_failure=False,
     running_process = [None, Lock()]
     timeout_occurred = [False, Lock()]
 
+    #class CommandExecutor(object):
     def run_cmds():
         for cmd in cmds:
             with timeout_occurred[1]:
                 if timeout_occurred[0]:
                     cmds_succeeded[0] = None
                     break
-
-            with running_process[1]:
-                # shell=False is important because it may not terminate
-                # correctly otherwise (plus is less secure).
-                # TODO figure out issue with shell=False and cmd.split(),
-                # update test expected out since interruppted commands can
-                # now be reported instead of assumed
-                proc = Popen(cmd, shell=True, universal_newlines=True,
-                             stdout=PIPE, stderr=PIPE)
-                running_process[0] = proc
+                else:
+                    with running_process[1]:
+                        proc = Popen(cmd, shell=True, universal_newlines=True,
+                                     stdout=PIPE, stderr=PIPE,
+                                     preexec_fn=setsid)
+                        running_process[0] = proc
 
             # Communicate pulls all stdout/stderr from the PIPEs to avoid
-            # blocking-- don't remove this line! This call blocks.
+            # blocking-- don't remove this line! This call blocks until the
+            # command finishes (or is terminated).
+            #print 'before communicate'
             stdout, stderr = proc.communicate()
+            #print 'after communicate'
             ret_val = proc.returncode
 
             with running_process[1]:
@@ -371,10 +376,9 @@ def _execute_commands(cmds, log_f, timeout, stop_on_first_failure=False,
                 individual_cmd_log_f.write(cmd_str + stdout_str + stderr_str)
                 individual_cmds_status.append((individual_cmd_log_f, ret_val))
 
-            if ret_val != 0:
-                cmds_succeeded[0] = False
-
             with timeout_occurred[1]:
+                if ret_val != 0:
+                    cmds_succeeded[0] = False
                 if timeout_occurred[0]:
                     cmds_succeeded[0] = None
 
@@ -387,13 +391,17 @@ def _execute_commands(cmds, log_f, timeout, stop_on_first_failure=False,
     cmd_runner_thread.join(float(timeout) * 60.0)
 
     if cmd_runner_thread.is_alive():
+        #print 'timeout occurred'
         # Timeout occurred, so terminate the process.
         with timeout_occurred[1]:
             timeout_occurred[0] = True
 
         with running_process[1]:
             if running_process[0] is not None:
-                running_process[0].terminate()
+                #print 'terminating process'
+                #running_process[0].terminate()
+                killpg(running_process[0].pid, SIGTERM)
+                #print 'process terminated'
         cmd_runner_thread.join()
 
     return cmds_succeeded[0], individual_cmds_status
