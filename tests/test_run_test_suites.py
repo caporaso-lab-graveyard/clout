@@ -17,7 +17,7 @@ from tempfile import TemporaryFile
 from unittest import main, TestCase
 
 from automated_testing.run_test_suites import (_build_email_summary,
-        _build_test_execution_commands, _can_ignore, _execute_commands,
+        _build_test_execution_commands, _can_ignore, CommandExecutor,
         _execute_commands_and_build_email, _parse_config_file,
         _parse_email_list, _parse_email_settings, run_test_suites)
 
@@ -435,12 +435,13 @@ class RunTestSuitesTests(TestCase):
         self.assertEqual(log_f.read(),
             "Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n")
 
-    def test_execute_commands(self):
+    def test_CommandExecutor(self):
         """Test executing arbitrary commands and logging their output."""
         # All commands succeed.
         exp = (True, [])
         log_f = TemporaryFile(prefix=self.prefix, suffix='.txt')
-        obs = _execute_commands(['echo foo', 'echo bar'], log_f, 1)
+        cmd_exec = CommandExecutor(['echo foo', 'echo bar'], log_f)
+        obs = cmd_exec(1)
         self.assertEqual(obs, exp)
 
         exp = ("Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
@@ -452,23 +453,25 @@ class RunTestSuitesTests(TestCase):
         # One command fails.
         exp = (False, [])
         log_f = TemporaryFile(prefix=self.prefix, suffix='.txt')
-        obs = _execute_commands(['echo foo', 'foobarbaz'], log_f, 1)
+        cmd_exec = CommandExecutor(['echo foo', 'foobarbaz'], log_f)
+        obs = cmd_exec(1)
         self.assertEqual(obs, exp)
 
         exp = ("Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
                "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n\n\n")
         log_f.seek(0, 0)
 
-        obs = sub('Stderr:\n\n.*\n\n', 'Stderr:\n\n\n\n',
-                             log_f.read())
+        obs = sub('Stderr:\n\n.*\n\n', 'Stderr:\n\n\n\n', log_f.read())
         self.assertEqual(obs, exp)
 
-    def test_execute_commands_stop_on_first_failure(self):
+    def test_CommandExecutor_stop_on_first_failure(self):
         """Test executing arbitrary commands and stopping on first failure."""
         # All commands succeed.
         exp = (True, [])
         log_f = TemporaryFile(prefix=self.prefix, suffix='.txt')
-        obs = _execute_commands(['echo foo', 'echo bar'], log_f, 1, True)
+        cmd_exec = CommandExecutor(['echo foo', 'echo bar'], log_f,
+                                   stop_on_first_failure=True)
+        obs = cmd_exec(1)
         self.assertEqual(obs, exp)
 
         exp = ("Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
@@ -480,7 +483,9 @@ class RunTestSuitesTests(TestCase):
         # First command fails.
         exp = (False, [])
         log_f = TemporaryFile(prefix=self.prefix, suffix='.txt')
-        obs = _execute_commands(['foobarbaz', 'echo foo'], log_f, 1, True)
+        cmd_exec = CommandExecutor(['foobarbaz', 'echo foo'], log_f,
+                                   stop_on_first_failure=True)
+        obs = cmd_exec(1)
         self.assertEqual(obs, exp)
 
         exp = ("Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n\n\n")
@@ -492,7 +497,9 @@ class RunTestSuitesTests(TestCase):
         # Second command fails.
         exp = (False, [])
         log_f = TemporaryFile(prefix=self.prefix, suffix='.txt')
-        obs = _execute_commands(['echo foo', 'foobarbaz'], log_f, 1, True)
+        cmd_exec = CommandExecutor(['echo foo', 'foobarbaz'], log_f,
+                                   stop_on_first_failure=True)
+        obs = cmd_exec(1)
         self.assertEqual(obs, exp)
 
         exp = ("Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
@@ -502,12 +509,13 @@ class RunTestSuitesTests(TestCase):
                              log_f.read())
         self.assertEqual(obs, exp)
 
-    def test_execute_commands_log_individual_cmds(self):
+    def test_CommandExecutor_log_individual_cmds(self):
         """execute arbitrary commands and log each one separately."""
         # All commands succeed.
         log_f = TemporaryFile(prefix=self.prefix, suffix='.txt')
-        obs = _execute_commands(['echo foo', 'echo bar'], log_f, 1,
-                                log_individual_cmds=True)
+        cmd_exec = CommandExecutor(['echo foo', 'echo bar'], log_f,
+                                   log_individual_cmds=True)
+        obs = cmd_exec(1)
         self.assertEqual(obs[0], True)
         self.assertEqual(len(obs[1]), 2)
         self.assertEqual(obs[1][0][1], 0)
@@ -533,8 +541,9 @@ class RunTestSuitesTests(TestCase):
 
         # First command fails.
         log_f = TemporaryFile(prefix=self.prefix, suffix='.txt')
-        obs = _execute_commands(['foobarbaz', 'echo foo'], log_f, 1,
-                                log_individual_cmds=True)
+        cmd_exec = CommandExecutor(['foobarbaz', 'echo foo'], log_f,
+                                   log_individual_cmds=True)
+        obs = cmd_exec(1)
         self.assertEqual(obs[0], False)
         self.assertEqual(len(obs[1]), 2)
         self.assertEqual(obs[1][0][1], 127)

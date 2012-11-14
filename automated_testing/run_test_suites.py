@@ -243,8 +243,10 @@ def _execute_commands_and_build_email(test_suites, setup_cmds,
 
     # Build up the body of the email as we execute the commands. First, execute
     # the setup commands.
-    setup_cmds_succeeded = _execute_commands(setup_cmds, log_f, setup_timeout,
-                                             stop_on_first_failure=True)[0]
+    cmd_executor = CommandExecutor(setup_cmds, log_f,
+                                   stop_on_first_failure=True)
+    setup_cmds_succeeded = cmd_executor(setup_timeout)[0]
+
     if setup_cmds_succeeded is None:
         email_body += ("The maximum allowable cluster setup time of %s "
                        "minute(s) was exceeded.\n\n" % str(setup_timeout))
@@ -259,9 +261,11 @@ def _execute_commands_and_build_email(test_suites, setup_cmds,
         # names, we'll also specify what we want the file to be called when it
         # is attached to the email (we don't have to worry about having unique
         # filenames at that point).
+        cmd_executor.cmds = test_suites_cmds
+        cmd_executor.stop_on_first_failure = False
+        cmd_executor.log_individual_cmds = True
         test_suites_cmds_succeeded, test_suites_cmds_status = \
-                _execute_commands(test_suites_cmds, log_f, test_suites_timeout,
-                                  log_individual_cmds=True)
+                cmd_executor(test_suites_timeout)
 
         # It is okay if there are fewer test suites that got executed than
         # there were input test suites (which is possible if we encounter a
@@ -293,8 +297,12 @@ def _execute_commands_and_build_email(test_suites, setup_cmds,
                                "labelled with the tag '%s' was properly "
                                "terminated. If not, you should manually "
                                "terminate it.\n\n" % cluster_tag)
-    teardown_cmds_succeeded = _execute_commands(teardown_cmds, log_f,
-                                                str(teardown_timeout))[0]
+
+    cmd_executor.cmds = teardown_cmds
+    cmd_executor.stop_on_first_failure = False
+    cmd_executor.log_individual_cmds = False
+    teardown_cmds_succeeded = cmd_executor(teardown_timeout)[0]
+
     if teardown_cmds_succeeded is None:
         email_body += ("The maximum allowable cluster termination time of "
                        "%s minute(s) was exceeded.\n\n%s" %
@@ -311,33 +319,6 @@ def _execute_commands_and_build_email(test_suites, setup_cmds,
         attachment[1].seek(0, 0)
 
     return email_body, attachments
-
-def _execute_commands(cmds, log_f, timeout, stop_on_first_failure=False,
-                      log_individual_cmds=False):
-    """Executes commands and logs output to a file.
-
-    Returns a 2-element tuple where the first element is a logical, where True
-    indicates all commands succeeded, False indicates at least one command
-    failed, and None indicates a timeout occurred. The second element of the
-    tuple will be an empty list if log_individual_cmds is False, otherwise will
-    be filled with 2-element tuples containing the individual TemporaryFile log
-    files for each command, and the command's return code.
-
-    Arguments:
-        cmds - list of commands to run
-        log_f - the file to write command output to
-        timeout - the number of minutes to allow all of the commands to run
-            collectively before aborting and returning the current results.
-            Must be a float, to allow for fractions of a minute
-        stop_on_first_failure - if True, will stop running all other commands
-            once a command has a nonzero exit code
-        log_individual_cmds - if True, will create a TemporaryFile for each
-            command that is run and log the output separately (as well as to
-            log_f). Will also keep track of the return values for each command
-    """
-    cmd_executor = CommandExecutor(cmds, log_f, stop_on_first_failure,
-                                   log_individual_cmds)
-    return cmd_executor(timeout)
 
 def _build_email_summary(test_suites_status):
     """Builds up a string suitable for the body of an email message.
@@ -422,7 +403,8 @@ class CommandExecutor(object):
 
     Provides support for timeouts (e.g. useful for commands that may hang
     indefinitely) and for capturing stdout, stderr, and return value of each
-    command.
+    command. Output is logged to a file (or optionally to separate files for
+    each command).
 
     This class is the single place in Clout that is not platform-independent
     (it won't be able to terminate timed-out processes on Windows). The fix is
@@ -436,11 +418,19 @@ class CommandExecutor(object):
         http://stackoverflow.com/a/4791612
     """
 
-    def __init__(self, cmds, log_f, stop_on_first_failure,
-                 log_individual_cmds):
+    def __init__(self, cmds, log_f, stop_on_first_failure=False,
+                 log_individual_cmds=False):
         """Initializes a new object to execute multiple commands.
 
-        All arguments are the same as expected by _execute_commands().
+        Arguments:
+            cmds - list of commands to run (strings)
+            log_f - the file to write command output to
+            stop_on_first_failure - if True, will stop running all other
+                commands once a command has a nonzero exit code
+            log_individual_cmds - if True, will create a TemporaryFile for each
+                command that is run and log the output separately (as well as
+                to log_f). Will also keep track of the return values for each
+                command
         """
         self.cmds = cmds
         self.log_f = log_f
@@ -448,15 +438,26 @@ class CommandExecutor(object):
         self.log_individual_cmds = log_individual_cmds
 
     def __call__(self, timeout):
-        """Executes the commands within the given timeout.
+        """Executes the commands within the given timeout, logging output.
 
         If this method is called multiple times using the same members, the
         output of the commands will be appended to the existing log_f.
 
+        Returns a 2-element tuple where the first element is a logical, where
+        True indicates all commands succeeded, False indicates at least one
+        command failed, and None indicates a timeout occurred.
+
+        The second element of the tuple will be an empty list if
+        log_individual_cmds is False, otherwise will be filled with 2-element
+        tuples containing the individual TemporaryFile log file for each
+        command, and the command's return code.
+
         Arguments:
-            timeout - same as for _execute_commands()
+            timeout - the number of minutes to allow all of the commands (i.e.
+                self.cmds)to run collectively before aborting and returning the
+                current results. Must be a float, to allow for fractions of a
+                minute
         """
-        # Keeps track of the status of the commands.
         self._cmds_succeeded = True
         self._individual_cmds_status = []
 
@@ -492,7 +493,7 @@ class CommandExecutor(object):
         return self._cmds_succeeded, self._individual_cmds_status
 
     def _run_commands(self):
-        """Code to be run in worker thread."""
+        """Code to be run in worker thread; actually executes the commands."""
         for cmd in self.cmds:
             # Check that there hasn't been a timeout before running the (next)
             # command.
