@@ -335,76 +335,9 @@ def _execute_commands(cmds, log_f, timeout, stop_on_first_failure=False,
             command that is run and log the output separately (as well as to
             log_f). Will also keep track of the return values for each command
     """
-    cmds_succeeded = [True]
-    individual_cmds_status = []
-    running_process = [None, Lock()]
-    timeout_occurred = [False, Lock()]
-
-    #class CommandExecutor(object):
-    def run_cmds():
-        for cmd in cmds:
-            with timeout_occurred[1]:
-                if timeout_occurred[0]:
-                    cmds_succeeded[0] = None
-                    break
-                else:
-                    with running_process[1]:
-                        proc = Popen(cmd, shell=True, universal_newlines=True,
-                                     stdout=PIPE, stderr=PIPE,
-                                     preexec_fn=setsid)
-                        running_process[0] = proc
-
-            # Communicate pulls all stdout/stderr from the PIPEs to avoid
-            # blocking-- don't remove this line! This call blocks until the
-            # command finishes (or is terminated).
-            #print 'before communicate'
-            stdout, stderr = proc.communicate()
-            #print 'after communicate'
-            ret_val = proc.returncode
-
-            with running_process[1]:
-                running_process[0] = None
-
-            cmd_str = 'Command:\n\n%s\n\n' % cmd
-            stdout_str = 'Stdout:\n\n%s\n' % stdout
-            stderr_str = 'Stderr:\n\n%s\n' % stderr
-            log_f.write(cmd_str + stdout_str + stderr_str)
-
-            if log_individual_cmds:
-                individual_cmd_log_f = TemporaryFile(
-                        prefix='automated_testing_log', suffix='.txt')
-                individual_cmd_log_f.write(cmd_str + stdout_str + stderr_str)
-                individual_cmds_status.append((individual_cmd_log_f, ret_val))
-
-            with timeout_occurred[1]:
-                if ret_val != 0:
-                    cmds_succeeded[0] = False
-                if timeout_occurred[0]:
-                    cmds_succeeded[0] = None
-
-                if timeout_occurred[0] or \
-                   (not cmds_succeeded[0] and stop_on_first_failure):
-                    break
-
-    cmd_runner_thread = Thread(target=run_cmds)
-    cmd_runner_thread.start()
-    cmd_runner_thread.join(float(timeout) * 60.0)
-
-    if cmd_runner_thread.is_alive():
-        #print 'timeout occurred'
-        # Timeout occurred, so terminate the process.
-        with timeout_occurred[1]:
-            timeout_occurred[0] = True
-
-        with running_process[1]:
-            if running_process[0] is not None:
-                #print 'terminating process'
-                #running_process[0].terminate()
-                killpg(running_process[0].pid, SIGTERM)
-                #print 'process terminated'
-        cmd_runner_thread.join()
-
-    return cmds_succeeded[0], individual_cmds_status
+    cmd_executor = CommandExecutor(cmds, log_f, stop_on_first_failure,
+                                   log_individual_cmds)
+    return cmd_executor(timeout)
 
 def _build_email_summary(test_suites_status):
     """Builds up a string suitable for the body of an email message.
@@ -484,16 +417,126 @@ def _can_ignore(line):
     return False if line.strip() != '' and not line.strip().startswith('#') \
            else True
 
-def _system_call(cmd):
-    """Call cmd and return (stdout, stderr, return_value).
-    
-    This function is taken from QIIME's util module (originally named
-    'qiime_system_call'.
+class CommandExecutor(object):
+    """Class to run commands in a separate thread.
+
+    Provides support for timeouts (e.g. useful for commands that may hang
+    indefinitely) and for capturing stdout, stderr, and return value of each
+    command.
+
+    This class is the single place in Clout that is not platform-independent
+    (it won't be able to terminate timed-out processes on Windows). The fix is
+    to not use shell=True in our call to Popen, but this would require changing
+    the way we support test suite config files and this (large) change will
+    have to wait.
+
+    Some of the code in this class is based on ideas/code from QIIME's
+    util.qiime_system_call function and the following posts:
+        http://stackoverflow.com/a/4825933
+        http://stackoverflow.com/a/4791612
     """
-    proc = Popen(cmd, shell=True, universal_newlines=True, stdout=PIPE,
-                 stderr=PIPE)
-    # Communicate pulls all stdout/stderr from the PIPEs to avoid blocking--
-    # don't remove this line!
-    stdout, stderr = proc.communicate()
-    return_value = proc.returncode
-    return stdout, stderr, return_value
+
+    def __init__(self, cmds, log_f, stop_on_first_failure,
+                 log_individual_cmds):
+        """Initializes a new object to execute multiple commands.
+
+        All arguments are the same as expected by _execute_commands().
+        """
+        self.cmds = cmds
+        self.log_f = log_f
+        self.stop_on_first_failure = stop_on_first_failure
+        self.log_individual_cmds = log_individual_cmds
+
+    def __call__(self, timeout):
+        """Executes the commands within the given timeout.
+
+        If this method is called multiple times using the same members, the
+        output of the commands will be appended to the existing log_f.
+
+        Arguments:
+            timeout - same as for _execute_commands()
+        """
+        # Keeps track of the status of the commands.
+        self._cmds_succeeded = True
+        self._individual_cmds_status = []
+
+        # We must create locks for the next two variables because they are
+        # read/written in the main thread and worker thread. They allow
+        # the threads to communicate when a timeout has occurred, and the
+        # hung process that needs to be terminated.
+        self._running_process = None
+        self._running_process_lock = Lock()
+
+        self._timeout_occurred = False
+        self._timeout_occurred_lock = Lock()
+
+        # Run the commands in a worker thread. Regain control after the
+        # specified timeout.
+        cmd_runner_thread = Thread(target=self._run_commands)
+        cmd_runner_thread.start()
+        cmd_runner_thread.join(float(timeout) * 60.0)
+
+        if cmd_runner_thread.is_alive():
+            # Timeout occurred, so terminate the current process and have the
+            # worker thread exit gracefully.
+            with self._timeout_occurred_lock:
+                self._timeout_occurred = True
+
+            with self._running_process_lock:
+                if self._running_process is not None:
+                    # We must kill the process group because the process was
+                    # launched with a shell. This code won't work on Windows.
+                    killpg(self._running_process.pid, SIGTERM)
+            cmd_runner_thread.join()
+
+        return self._cmds_succeeded, self._individual_cmds_status
+
+    def _run_commands(self):
+        """Code to be run in worker thread."""
+        for cmd in self.cmds:
+            # Check that there hasn't been a timeout before running the (next)
+            # command.
+            with self._timeout_occurred_lock:
+                if self._timeout_occurred:
+                    self._cmds_succeeded = None
+                    break
+                else:
+                    with self._running_process_lock:
+                        # setsid makes the spawned shell the process group
+                        # leader, so that we can kill it and its children from
+                        # the main thread.
+                        proc = Popen(cmd, shell=True, universal_newlines=True,
+                                     stdout=PIPE, stderr=PIPE,
+                                     preexec_fn=setsid)
+                        self._running_process = proc
+
+            # Communicate pulls all stdout/stderr from the PIPEs to avoid
+            # blocking-- don't remove this line! This call blocks until the
+            # command finishes (or is terminated by the main thread).
+            stdout, stderr = proc.communicate()
+            ret_val = proc.returncode
+
+            with self._running_process_lock:
+                self._running_process = None
+
+            cmd_str = 'Command:\n\n%s\n\n' % cmd
+            stdout_str = 'Stdout:\n\n%s\n' % stdout
+            stderr_str = 'Stderr:\n\n%s\n' % stderr
+            self.log_f.write(cmd_str + stdout_str + stderr_str)
+
+            if self.log_individual_cmds:
+                individual_cmd_log_f = TemporaryFile(
+                        prefix='automated_testing_log', suffix='.txt')
+                individual_cmd_log_f.write(cmd_str + stdout_str + stderr_str)
+                self._individual_cmds_status.append(
+                        (individual_cmd_log_f, ret_val))
+
+            with self._timeout_occurred_lock:
+                if ret_val != 0:
+                    self._cmds_succeeded = False
+                if self._timeout_occurred:
+                    self._cmds_succeeded = None
+
+                if self._timeout_occurred or \
+                   (not self._cmds_succeeded and self.stop_on_first_failure):
+                    break

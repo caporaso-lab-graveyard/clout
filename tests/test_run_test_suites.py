@@ -19,8 +19,7 @@ from unittest import main, TestCase
 from automated_testing.run_test_suites import (_build_email_summary,
         _build_test_execution_commands, _can_ignore, _execute_commands,
         _execute_commands_and_build_email, _parse_config_file,
-        _parse_email_list, _parse_email_settings, run_test_suites,
-        _system_call)
+        _parse_email_list, _parse_email_settings, run_test_suites)
 
 class RunTestSuitesTests(TestCase):
     """Tests for the run_test_suites.py module."""
@@ -594,12 +593,6 @@ class RunTestSuitesTests(TestCase):
         self.assertEqual(_can_ignore(self.email_list4[0]), False)
         self.assertEqual(_can_ignore(self.email_list4[1]), False)
         self.assertEqual(_can_ignore(self.email_list4[2]), True)
-
-    def test_system_call(self):
-        """Test making system calls and capturing output."""
-        exp = ('foo\n', '', 0)
-        obs = _system_call('echo foo')
-        self.assertEqual(obs, exp)
 
 
 if __name__ == "__main__":
