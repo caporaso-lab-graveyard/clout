@@ -74,7 +74,7 @@ optional_options = [
         'be attempted to be terminated, if possible. Fractions of a minute '
         'are allowed [default: %default]',
         default=20.0),
-    make_option('--test_suites_timeout', type='int',
+    make_option('--test_suites_timeout', type='float',
         help='the number of minutes to wait before aborting the current test '
         'suite and terminating the remote cluster. This timeout applies to '
         'how long *all* test suites take to run as a whole. For example, this '
@@ -83,7 +83,7 @@ optional_options = [
         'never finish. An email will be sent saying there was a timeout. '
         'Fractions of a minute are allowed [default: %default]',
         default=240.0),
-    make_option('--teardown_timeout', type='int',
+    make_option('--teardown_timeout', type='float',
         help='the number of minutes to allow the remote cluster to be '
         'terminated before aborting. An email will be sent saying there was a '
         'timeout during cluster termination, with a warning that the user '
