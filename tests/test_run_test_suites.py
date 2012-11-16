@@ -17,10 +17,9 @@ from tempfile import TemporaryFile
 from unittest import main, TestCase
 
 from automated_testing.run_test_suites import (_build_email_summary,
-        _build_test_execution_commands, _can_ignore, _execute_commands,
+        _build_test_execution_commands, _can_ignore, CommandExecutor,
         _execute_commands_and_build_email, _parse_config_file,
-        _parse_email_list, _parse_email_settings, run_test_suites,
-        _system_call)
+        _parse_email_list, _parse_email_settings, run_test_suites)
 
 class RunTestSuitesTests(TestCase):
     """Tests for the run_test_suites.py module."""
@@ -327,15 +326,17 @@ class RunTestSuitesTests(TestCase):
 
     def test_execute_commands_and_build_email_test_suite_timeout(self):
         """Test functions correctly when a test suite timeout occurs."""
+        # Test a timeout that occurs in the first test suite to run.
         obs = _execute_commands_and_build_email(
-            [['Test1', 'echo foo'], ['Test2', 'sleep 65 && echo bar']],
+            [['Test1', 'echo foo && sleep 5'], ['Test2', 'echo bar']],
             ['echo setting up'],
-            ['echo foo', 'sleep 65 && echo bar'],
+            ['echo foo && sleep 5', 'echo bar'],
             ['echo tearing down'],
-            1, 1, 1, 'test-cluster-tag')
-        self.assertEqual(obs[0], 'Test1: Pass\n\nThe maximum allowable time '
-        'of 1 minutes for all test suites to run was exceeded. The following '
-        'test suites were not tested: Test2\n\n')
+            1, 0.01, 1, 'test-cluster-tag')
+        self.assertEqual(obs[0], 'Test1: Fail\n\nThe maximum allowable time '
+            'of 0.01 minute(s) for all test suites to run was exceeded. The '
+            'timeout occurred while running the Test1 test suite. The '
+            'following test suites were not tested: Test2\n\n')
 
         self.assertEqual(len(obs[1]), 2)
         name, log_f = obs[1][0]
@@ -343,7 +344,37 @@ class RunTestSuitesTests(TestCase):
         self.assertEqual(log_f.read(),
             "Command:\n\necho setting up\n\nStdout:\n\nsetting up\n\n"
             "Stderr:\n\n\n"
+            "Command:\n\necho foo && sleep 5\n\n"
+            "Stdout:\n\nfoo\n\nStderr:\n\n\n"
+            "Command:\n\necho tearing down\n\nStdout:\n\ntearing down\n\n"
+            "Stderr:\n\n\n")
+
+        name, log_f = obs[1][1]
+        self.assertEqual(name, 'Test1_results.txt')
+        self.assertEqual(log_f.read(),
+            "Command:\n\necho foo && sleep 5\n\n"
+            "Stdout:\n\nfoo\n\nStderr:\n\n\n")
+
+        # Test a timeout that occurs in the last test suite to run.
+        obs = _execute_commands_and_build_email(
+            [['Test1', 'echo foo'], ['Test2', 'sleep 5 && echo bar']],
+            ['echo setting up'],
+            ['echo foo', 'sleep 5 && echo bar'],
+            ['echo tearing down'],
+            1, 0.01, 1, 'test-cluster-tag')
+        self.assertEqual(obs[0], 'Test1: Pass\nTest2: Fail\n\nThe maximum '
+            'allowable time of 0.01 minute(s) for all test suites to run was '
+            'exceeded. The timeout occurred while running the Test2 test '
+            'suite.')
+
+        self.assertEqual(len(obs[1]), 3)
+        name, log_f = obs[1][0]
+        self.assertEqual(name, 'automated_testing_log.txt')
+        self.assertEqual(log_f.read(),
+            "Command:\n\necho setting up\n\nStdout:\n\nsetting up\n\n"
+            "Stderr:\n\n\n"
             "Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
+            "Command:\n\nsleep 5 && echo bar\n\nStdout:\n\n\nStderr:\n\n\n"
             "Command:\n\necho tearing down\n\nStdout:\n\ntearing down\n\n"
             "Stderr:\n\n\n")
 
@@ -352,23 +383,29 @@ class RunTestSuitesTests(TestCase):
         self.assertEqual(log_f.read(),
             "Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n")
 
+        name, log_f = obs[1][2]
+        self.assertEqual(name, 'Test2_results.txt')
+        self.assertEqual(log_f.read(),
+            "Command:\n\nsleep 5 && echo bar\n\nStdout:\n\n\nStderr:\n\n\n")
+
     def test_execute_commands_and_build_email_setup_timeout(self):
         """Test functions correctly when a setup timeout occurs."""
         obs = _execute_commands_and_build_email(
             [['Test1', 'echo foo']],
-            ['echo setting up && sleep 65'],
+            ['echo setting up && sleep 5'],
             ['echo foo'],
             ['echo tearing down'],
-            1, 1, 1, 'test-cluster-tag')
+            0.01, 1, 1, 'test-cluster-tag')
         self.assertEqual(obs[0], 'The maximum allowable cluster setup time of '
-        '1 minutes was exceeded.\n\n')
+        '0.01 minute(s) was exceeded.\n\n')
 
         self.assertEqual(len(obs[1]), 1)
         name, log_f = obs[1][0]
         self.assertEqual(name, 'automated_testing_log.txt')
         self.assertEqual(log_f.read(),
-            "Command:\n\necho tearing down\n\nStdout:\n\ntearing down\n\n"
-            "Stderr:\n\n\n")
+            "Command:\n\necho setting up && sleep 5\n\nStdout:\n\nsetting up\n"
+            "\nStderr:\n\n\nCommand:\n\necho tearing down\n\nStdout:\n\n"
+            "tearing down\n\nStderr:\n\n\n")
 
     def test_execute_commands_and_build_email_teardown_timeout(self):
         """Test functions correctly when a teardown timeout occurs."""
@@ -376,11 +413,11 @@ class RunTestSuitesTests(TestCase):
             [['Test1', 'echo foo']],
             ['echo setting up'],
             ['echo foo'],
-            ['echo tearing down && sleep 65'],
-            1, 1, 1, 'test-cluster-tag')
+            ['echo tearing down && sleep 5'],
+            1, 1, 0.01, 'test-cluster-tag')
         self.assertEqual(obs[0], "Test1: Pass\n\nThe maximum allowable "
-        "cluster termination time of 1 minutes was exceeded.\n\nIMPORTANT: "
-        "You should check that the cluster labelled with the tag "
+        "cluster termination time of 0.01 minute(s) was exceeded.\n\n"
+        "IMPORTANT: You should check that the cluster labelled with the tag "
         "'test-cluster-tag' was properly terminated. If not, you should "
         "manually terminate it.\n\n")
 
@@ -388,21 +425,23 @@ class RunTestSuitesTests(TestCase):
         name, log_f = obs[1][0]
         self.assertEqual(name, 'automated_testing_log.txt')
         self.assertEqual(log_f.read(),
-            "Command:\n\necho setting up\n\nStdout:\n\nsetting up\n\n"
-            "Stderr:\n\n\n"
-            "Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n")
+            "Command:\n\necho setting up\n\nStdout:\n\nsetting up\n\nStderr:\n"
+            "\n\nCommand:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
+            "Command:\n\necho tearing down && sleep 5\n\nStdout:\n\ntearing "
+            "down\n\nStderr:\n\n\n")
 
         name, log_f = obs[1][1]
         self.assertEqual(name, 'Test1_results.txt')
         self.assertEqual(log_f.read(),
             "Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n")
 
-    def test_execute_commands(self):
+    def test_CommandExecutor(self):
         """Test executing arbitrary commands and logging their output."""
         # All commands succeed.
         exp = (True, [])
         log_f = TemporaryFile(prefix=self.prefix, suffix='.txt')
-        obs = _execute_commands(['echo foo', 'echo bar'], log_f, 1)
+        cmd_exec = CommandExecutor(['echo foo', 'echo bar'], log_f)
+        obs = cmd_exec(1)
         self.assertEqual(obs, exp)
 
         exp = ("Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
@@ -414,23 +453,25 @@ class RunTestSuitesTests(TestCase):
         # One command fails.
         exp = (False, [])
         log_f = TemporaryFile(prefix=self.prefix, suffix='.txt')
-        obs = _execute_commands(['echo foo', 'foobarbaz'], log_f, 1)
+        cmd_exec = CommandExecutor(['echo foo', 'foobarbaz'], log_f)
+        obs = cmd_exec(1)
         self.assertEqual(obs, exp)
 
         exp = ("Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
                "Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n\n\n")
         log_f.seek(0, 0)
 
-        obs = sub('Stderr:\n\n.*\n\n', 'Stderr:\n\n\n\n',
-                             log_f.read())
+        obs = sub('Stderr:\n\n.*\n\n', 'Stderr:\n\n\n\n', log_f.read())
         self.assertEqual(obs, exp)
 
-    def test_execute_commands_stop_on_first_failure(self):
+    def test_CommandExecutor_stop_on_first_failure(self):
         """Test executing arbitrary commands and stopping on first failure."""
         # All commands succeed.
         exp = (True, [])
         log_f = TemporaryFile(prefix=self.prefix, suffix='.txt')
-        obs = _execute_commands(['echo foo', 'echo bar'], log_f, 1, True)
+        cmd_exec = CommandExecutor(['echo foo', 'echo bar'], log_f,
+                                   stop_on_first_failure=True)
+        obs = cmd_exec(1)
         self.assertEqual(obs, exp)
 
         exp = ("Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
@@ -442,7 +483,9 @@ class RunTestSuitesTests(TestCase):
         # First command fails.
         exp = (False, [])
         log_f = TemporaryFile(prefix=self.prefix, suffix='.txt')
-        obs = _execute_commands(['foobarbaz', 'echo foo'], log_f, 1, True)
+        cmd_exec = CommandExecutor(['foobarbaz', 'echo foo'], log_f,
+                                   stop_on_first_failure=True)
+        obs = cmd_exec(1)
         self.assertEqual(obs, exp)
 
         exp = ("Command:\n\nfoobarbaz\n\nStdout:\n\n\nStderr:\n\n\n\n")
@@ -454,7 +497,9 @@ class RunTestSuitesTests(TestCase):
         # Second command fails.
         exp = (False, [])
         log_f = TemporaryFile(prefix=self.prefix, suffix='.txt')
-        obs = _execute_commands(['echo foo', 'foobarbaz'], log_f, 1, True)
+        cmd_exec = CommandExecutor(['echo foo', 'foobarbaz'], log_f,
+                                   stop_on_first_failure=True)
+        obs = cmd_exec(1)
         self.assertEqual(obs, exp)
 
         exp = ("Command:\n\necho foo\n\nStdout:\n\nfoo\n\nStderr:\n\n\n"
@@ -464,12 +509,13 @@ class RunTestSuitesTests(TestCase):
                              log_f.read())
         self.assertEqual(obs, exp)
 
-    def test_execute_commands_log_individual_cmds(self):
+    def test_CommandExecutor_log_individual_cmds(self):
         """execute arbitrary commands and log each one separately."""
         # All commands succeed.
         log_f = TemporaryFile(prefix=self.prefix, suffix='.txt')
-        obs = _execute_commands(['echo foo', 'echo bar'], log_f, 1,
-                                log_individual_cmds=True)
+        cmd_exec = CommandExecutor(['echo foo', 'echo bar'], log_f,
+                                   log_individual_cmds=True)
+        obs = cmd_exec(1)
         self.assertEqual(obs[0], True)
         self.assertEqual(len(obs[1]), 2)
         self.assertEqual(obs[1][0][1], 0)
@@ -495,8 +541,9 @@ class RunTestSuitesTests(TestCase):
 
         # First command fails.
         log_f = TemporaryFile(prefix=self.prefix, suffix='.txt')
-        obs = _execute_commands(['foobarbaz', 'echo foo'], log_f, 1,
-                                log_individual_cmds=True)
+        cmd_exec = CommandExecutor(['foobarbaz', 'echo foo'], log_f,
+                                   log_individual_cmds=True)
+        obs = cmd_exec(1)
         self.assertEqual(obs[0], False)
         self.assertEqual(len(obs[1]), 2)
         self.assertEqual(obs[1][0][1], 127)
@@ -555,12 +602,6 @@ class RunTestSuitesTests(TestCase):
         self.assertEqual(_can_ignore(self.email_list4[0]), False)
         self.assertEqual(_can_ignore(self.email_list4[1]), False)
         self.assertEqual(_can_ignore(self.email_list4[2]), True)
-
-    def test_system_call(self):
-        """Test making system calls and capturing output."""
-        exp = ('foo\n', '', 0)
-        obs = _system_call('echo foo')
-        self.assertEqual(obs, exp)
 
 
 if __name__ == "__main__":

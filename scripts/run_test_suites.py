@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from __future__ import division
 
-__author__ = "Jai Rideout"
+__author__ = "Jai Ram Rideout"
 __copyright__ = "Copyright 2012, The QIIME project"
 __credits__ = ["Jai Ram Rideout"]
 __license__ = "GPL"
@@ -67,28 +67,29 @@ optional_options = [
         'file) for running the test suite(s) on. You should only need a '
         'single-node cluster [default: starcluster config default template]',
         default=None),
-    make_option('--setup_timeout', type='int',
+    make_option('--setup_timeout', type='float',
         help='the number of minutes to allow the remote cluster to be '
         'created and initialized before aborting. An email will be sent '
         'saying there was a timeout during cluster setup, and the cluster '
-        'be attempted to be terminated, if possible [default: %default]',
-        default=20),
-    make_option('--test_suites_timeout', type='int',
+        'be attempted to be terminated, if possible. Fractions of a minute '
+        'are allowed [default: %default]',
+        default=20.0),
+    make_option('--test_suites_timeout', type='float',
         help='the number of minutes to wait before aborting the current test '
         'suite and terminating the remote cluster. This timeout applies to '
         'how long *all* test suites take to run as a whole. For example, this '
         'option is useful if some tests have a chance of "hanging", or if '
         'something happens on the remote cluster that causes a command to '
-        'never finish. An email will be sent saying there was a timeout '
-        '[default: %default]',
-        default=240),
-    make_option('--teardown_timeout', type='int',
+        'never finish. An email will be sent saying there was a timeout. '
+        'Fractions of a minute are allowed [default: %default]',
+        default=240.0),
+    make_option('--teardown_timeout', type='float',
         help='the number of minutes to allow the remote cluster to be '
         'terminated before aborting. An email will be sent saying there was a '
         'timeout during cluster termination, with a warning that the user '
-        'should check that the cluster did indeed shut down correctly '
-        '[default: %default]',
-        default=20),
+        'should check that the cluster did indeed shut down correctly. '
+        'Fractions of a minute are allowed [default: %default]',
+        default=20.0),
     make_option('--starcluster_exe_fp', type='string',
         help='the full path to the starcluster executable. By default, '
         'will look for "starcluster" in PATH [default: %default]',
