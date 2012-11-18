@@ -1,4 +1,4 @@
-# clout: cloud-based automated testing
+# Clout: Cloud-based Automated Testing
 
 _clout_ is a tool that facilitates the automated testing of software using Amazon's EC2 service as a testing platform. _clout_ can work with any number of testing suites and programming languages.
 
@@ -14,7 +14,7 @@ If you are using _clout_ to test your software, we'd love to hear from you and a
 
 Please refer to the ```INSTALL.md``` file for details on how to install and set up _clout_ to run your test suites.
 
-## What is _clout_ and how does it work?
+## What is Clout and how does it work?
 
 _clout_ is a tool that executes any number of test suites using Amazon's EC2 service and emails the results to a list of recipients. StarCluster is used to boot up a cluster on EC2 and the test suites are executed on the cluster. This has the advantage of freeing up locally-maintained systems from running computationally-intensive processes, allowing the heavy work to be done on Amazon's always-available and reliable EC2 service. The type of compute node that the tests are run on is also configurable, which makes _clout_ flexible and scalable to project of any size, allowing you to choose the right hardware for the timely execution of your test suites.
 
@@ -25,7 +25,7 @@ _clout_ is designed to be used in a command scheduler program (such as _cron_) i
 _clout_ requires four different configuration files as input. Examples of each
 type of file can be found under the ```templates/``` directory.
 
-1. Test suite configuration file
+### Test suite configuration file
 
 This file contains tab-separated fields describing each test suite that will be run by _clout_. All fields are required. The test suites will be executed in the order that they appear in this file.
 
@@ -35,7 +35,7 @@ The second field is the set of commands that will be executed to run the test su
 
 **NOTE:** The commands that are executed should follow the Unix standard for return codes (a return code of zero indicates success, anything else indicates failure). _clout_ uses the return codes to determine whether or not there was a problem in executing any of the commands, as well as to determine the status of the test suites themselves. Thus, if a test fails, make sure your test suite executable returns a non-zero return code, and likewise, if all tests pass, your test suite executable should return zero for success.
 
-2. StarCluster configuration file
+### StarCluster configuration file
 
 This file is the StarCluster configuration file that _clout_ will use when booting up a cluster. This file contains important information regarding your Amazon EC2 account, the cluster template to use for running the tests on, etc.. Please refer to the [StarCluster website](http://web.mit.edu/star/cluster/) for instructions on how to set up a StarCluster configuration file.
 
@@ -43,11 +43,11 @@ This file is the StarCluster configuration file that _clout_ will use when booti
 
 **TIP:** Make sure the RSA key that this config file points to is in the correct location and has the right permissions (e.g. ```chmod 400 key.rsa```).
 
-3. Email recipients configuration file
+### Email recipients configuration file
 
 This file contains a list of email addresses (one per line) of the individuals who should receive an email of the testing results.
 
-4. Email settings configuration file
+### Email settings configuration file
 
 This file contains four key/value pairs (each separated by a tab) that define how _clout_ should send the email. The fields ```smtp_server```, ```smtp_port```, ```sender```, and ```password``` must be defined. The ```sender``` field is the email address that will show up in the _From_ field in the email, and it is also used to log into the SMTP server in conjunction with the ```password``` field.
 
