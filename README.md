@@ -57,10 +57,10 @@ This file contains four key/value pairs (each separated by a tab) that define ho
 
 Executes the unit test suites defined in the input configuration file as the ```ubuntu``` user and emails the test results to everyone in the provided email list. The default StarCluster template is used (as is defined in the input starcluster config file) and the starcluster cluster tag is ```nightly_tests```.
 
-    run_test_suites.py -i templates/test_suite_config.txt -s templates/starcluster_config -u ubuntu -c nightly_tests -l templates/recipients.txt -e templates/email_settings.txt
+    clout -i templates/test_suite_config.txt -s templates/starcluster_config -u ubuntu -c nightly_tests -l templates/recipients.txt -e templates/email_settings.txt
 
 **Example 2:** Execute test suites remotely using a custom StarCluster cluster template
 
 Executes the test suites using a custom StarCluster cluster template ```test-cluster``` instead of the default cluster template in the StarCluster config file.
 
-    run_test_suites.py -i templates/test_suite_config.txt -s templates/starcluster_config -u ubuntu -c nightly_tests -l templates/recipients.txt -e templates/email_settings.txt -t test-cluster
+    clout -i templates/test_suite_config.txt -s templates/starcluster_config -u ubuntu -c nightly_tests -l templates/recipients.txt -e templates/email_settings.txt -t test-cluster
