@@ -9,7 +9,7 @@ _clout_ requires:
 
 ## System Setup
 
-1. Edit your ssh config (typically in ~/.ssh/config) and add the following two lines:
+Edit your ssh config (typically in ~/.ssh/config) and add the following two lines:
 
     StrictHostKeyChecking no
     ServerAliveInterval 120
@@ -18,12 +18,12 @@ The first line tells SSH not to ask us whether we want to connect or not to an u
 
 The second line tells us to send keepalive packets to the Amazon EC2 instance every two minutes so that our SSH connection doesn't drop during long-running test suites.
 
-2. Add _clout_'s scripts and library areas to your ```PATH``` and ```PYTHONPATH```, respectively, changing the filepaths to point to wherever this project resides. Feel free to add these lines to your .bashrc or .bash_profile so that you won't have to execute them every time you open a new shell (make sure to source your .bashrc or .bash_profile after you've added the lines):
+Add _clout_'s scripts and library areas to your ```PATH``` and ```PYTHONPATH```, respectively, changing the filepaths to point to wherever this project resides. Feel free to add these lines to your .bashrc or .bash_profile so that you won't have to execute them every time you open a new shell (make sure to source your .bashrc or .bash_profile after you've added the lines):
 
     export PATH=/home/some_user/clout/scripts:$PATH
     export PYTHONPATH=/home/some_user/clout:$PYTHONPATH
 
-3. Test that your install appears to be working by running the following command:
+Test that your install appears to be working by running the following command:
 
     clout -h
 
