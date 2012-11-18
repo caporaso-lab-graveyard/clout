@@ -1,3 +1,3 @@
-# Add your email address to this list to receive the automated testing results.
+# Add your email address to this list to receive Clout's test results.
 foo@bar.com
 baz@example.net
