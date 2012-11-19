@@ -16,7 +16,7 @@ Please refer to the ```INSTALL.md``` file for details on how to install and set 
 
 ## What is Clout and how does it work?
 
-_clout_ is a tool that executes any number of test suites using Amazon's EC2 service and emails the results to a list of recipients. StarCluster is used to boot up a cluster on EC2 and the test suites are executed on the cluster. This has the advantage of freeing up locally-maintained systems from running computationally-intensive processes, allowing the heavy work to be done on Amazon's always-available and reliable EC2 service. The type of compute node that the tests are run on is also configurable, which makes _clout_ flexible and scalable to project of any size, allowing you to choose the right hardware for the timely execution of your test suites.
+_clout_ is a tool that executes any number of test suites using Amazon's EC2 service and emails the results to a list of recipients. [StarCluster](http://star.mit.edu/cluster/) is used to boot up a cluster on EC2 and the test suites are executed on the cluster. This has the advantage of freeing up locally-maintained systems from running computationally-intensive processes, allowing the heavy work to be done on Amazon's always-available and reliable EC2 service. The type of compute node that the tests are run on is also configurable, which makes _clout_ flexible and scalable to project of any size, allowing you to choose the right hardware for the timely execution of your test suites.
 
 _clout_ is designed to be used in a command scheduler program (such as _cron_) in order to automatically execute a suite of tests and email the results to a list of recipients. Thus, you will only interact with a single executable (aptly named ```clout```) to set up, run your test suites, and email the results. This script can be easily added to a crontab so that you can receive test suite results on a regular basis (e.g. nightly).
 
@@ -64,3 +64,7 @@ Executes the unit test suites defined in the input configuration file as the ```
 Executes the test suites using a custom StarCluster cluster template ```test-cluster``` instead of the default cluster template in the StarCluster config file.
 
     clout -i templates/test_suite_config.txt -s templates/starcluster_config -u ubuntu -c nightly_tests -l templates/recipients.txt -e templates/email_settings.txt -t test-cluster
+
+## Acknowledgements
+
+_clout_ development was supported by an [Amazon Web Services in Education researcher's grant](http://aws.amazon.com/education/) to the [QIIME](http://www.qiime.org) development group.
