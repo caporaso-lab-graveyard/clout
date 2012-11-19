@@ -63,9 +63,9 @@ def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
 
     # Parse the various configuration files first so that we know if there's
     # any outstanding problems with file formats before continuing.
-    test_suites = _parse_config_file(config_f)
-    recipients = _parse_email_list(recipients_f)
-    email_settings = _parse_email_settings(email_settings_f)
+    test_suites = parse_config_file(config_f)
+    recipients = parse_email_list(recipients_f)
+    email_settings = parse_email_settings(email_settings_f)
 
     # Get the commands that need to be executed (these include launching a
     # cluster, running the test suites, and terminating the cluster).
