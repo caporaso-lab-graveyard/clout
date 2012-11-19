@@ -125,10 +125,10 @@ def main():
     if opts.cluster_tag is None:
         parser.print_help()
         parser.error('You must specify a cluster tag.')
-    if opts.input_email_list is None:
+    if opts.input_email_list_fp is None:
         parser.print_help()
         parser.error('You must specify an input list of email addresses.')
-    if opts.input_email_settings is None:
+    if opts.input_email_settings_fp is None:
         parser.print_help()
         parser.error('You must specify an input email settings file.')
 
