@@ -67,4 +67,4 @@ Executes the test suites using a custom StarCluster cluster template ```test-clu
 
 ## Acknowledgements
 
-_clout_ development was supported by an [Amazon Web Services in Education researcher's grant](http://aws.amazon.com/education/) to the [QIIME](www.qiime.org) development group.
+_clout_ development was supported by an [Amazon Web Services in Education researcher's grant](http://aws.amazon.com/education/) to the [QIIME](http://www.qiime.org) development group.
