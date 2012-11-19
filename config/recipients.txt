@@ -1,3 +1,0 @@
-# Add your email address to this list to receive the automated testing results.
-foo@bar.com
-baz@example.net

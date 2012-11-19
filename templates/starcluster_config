@@ -1,8 +1,8 @@
 ########################################################################
-## Sample StarCluster configuration file for automated testing system ##
+## Sample StarCluster configuration file for use with Clout           ##
 ########################################################################
 [global]
-DEFAULT_TEMPLATE=automated_testing
+DEFAULT_TEMPLATE=clout
 ENABLE_EXPERIMENTAL=True
 
 #############################################
@@ -17,14 +17,14 @@ AWS_REGION_NAME = some_region_name
 ###########################
 ## Defining EC2 Keypairs ##
 ###########################
-[key automated_testing_key]
+[key clout_key]
 KEY_LOCATION=/some/RSA/key/location
 
 ################################
 ## Defining Cluster Templates ##
 ################################
-[cluster automated_testing]
-KEYNAME = automated_testing_key
+[cluster clout]
+KEYNAME = clout_key
 CLUSTER_SIZE = 1
 CLUSTER_USER = sgeadmin
 CLUSTER_SHELL = bash
