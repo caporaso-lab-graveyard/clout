@@ -69,4 +69,4 @@ Executes the test suites using a custom StarCluster cluster template ```test-clu
 
 ## Acknowledgements
 
-_clout_ development was supported by an [Amazon Web Services in Education researcher's grant](http://aws.amazon.com/education/) to the [QIIME](http://www.qiime.org) development group.
+_clout_ was developed by Jai Ram Rideout ([@jrrideout](https://github.com/jrrideout)) in the [Caporaso Lab](http://www.caporaso.us) at Northern Arizona University. Development was supported by an [Amazon Web Services in Education researcher's grant](http://aws.amazon.com/education/) to the [QIIME](http://www.qiime.org) development group. _clout_ is powered by [StarCluster](http://star.mit.edu/cluster/).
