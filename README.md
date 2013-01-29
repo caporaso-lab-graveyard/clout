@@ -1,3 +1,5 @@
+![Clout logo](https://raw.github.com/qiime/clout/master/resources/clout_logo.png "Clout: Cloud-based Automated Testing")
+
 # Clout: Cloud-based Automated Testing
 
 _clout_ is a tool that facilitates the automated testing of software using Amazon's EC2 service as a testing platform. _clout_ can work with any number of testing suites and programming languages.
