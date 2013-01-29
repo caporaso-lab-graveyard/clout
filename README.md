@@ -4,11 +4,12 @@
 
 _clout_ is a tool that facilitates the automated testing of software using Amazon's EC2 service as a testing platform. _clout_ can work with any number of testing suites and programming languages.
 
-_clout_ is currently being used to test the development versions of the following bioinformatics projects on a nightly basis:
+_clout_ is currently being used to test the following bioinformatics projects on a nightly basis (in addition to testing itself):
 
 * [QIIME](http://qiime.org/)
 * [PyCogent](http://pycogent.org/)
 * [biom-format](http://biom-format.org/)
+* [PICRUSt](http://picrust.github.com/picrust/)
 * [Primer Prospector](http://pprospector.sourceforge.net/)
 * [PyNAST](http://qiime.org/pynast/)
 
