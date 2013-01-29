@@ -7,7 +7,7 @@ _clout_ is a tool that facilitates the automated testing of software using Amazo
 _clout_ is currently being used to test the development versions of the following bioinformatics projects on a nightly basis:
 
 * [QIIME](http://qiime.org/)
-* [PyCogent](http://pycogent.sourceforge.net/)
+* [PyCogent](http://pycogent.org/)
 * [biom-format](http://biom-format.org/)
 * [Primer Prospector](http://pprospector.sourceforge.net/)
 * [PyNAST](http://qiime.org/pynast/)
