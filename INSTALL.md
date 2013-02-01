@@ -4,8 +4,25 @@
 
 _clout_ requires:
 
-* Python 2.7 (other versions may also work, though this is the officially tested and supported version)
-* StarCluster (tested on version 0.93.3)
+* Python 2.5+
+* [StarCluster](http://star.mit.edu/cluster/) (tested on version 0.93.3)
+
+## Building and Installing Clout
+
+To build _clout_, run:
+
+    python setup.py build
+
+To install in your home directory:
+
+    python setup.py install --prefix=$HOME
+
+To install system-wide:
+
+    python setup.py install
+
+For a complete discussion of customizations related to the ```setup.py``` script, see
+[this page](http://docs.python.org/release/2.7.1/install/index.html#alternate-installation).
 
 ## System Setup
 
@@ -17,11 +34,6 @@ Edit your ssh config (typically in ~/.ssh/config) and add the following two line
 The first line tells SSH not to ask us whether we want to connect or not to an unknown host, which will ALWAYS occur since the Amazon EC2 instance will always be a new host each time one is created. This option allows us bypass this prompt and keep the entire process automated.
 
 The second line tells us to send keepalive packets to the Amazon EC2 instance every two minutes so that our SSH connection doesn't drop during long-running test suites.
-
-Add _clout_'s scripts and library areas to your ```PATH``` and ```PYTHONPATH```, respectively, changing the filepaths to point to wherever this project resides. Feel free to add these lines to your .bashrc or .bash_profile so that you won't have to execute them every time you open a new shell (make sure to source your .bashrc or .bash_profile after you've added the lines):
-
-    export PATH=/home/some_user/clout/scripts:$PATH
-    export PYTHONPATH=/home/some_user/clout:$PYTHONPATH
 
 Test that your install appears to be working by running the following command:
 

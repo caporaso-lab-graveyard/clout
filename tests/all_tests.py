@@ -12,13 +12,12 @@ from glob import glob
 import re
 
 __author__ = "Rob Knight"
-__copyright__ = "Copyright 2012, The Clout Project"
+__copyright__ = "Copyright 2012-2013, The Clout Project"
 __credits__ = ["Rob Knight", "Greg Caporaso", "Jai Ram Rideout"]
-__license__ = "GPL"
+__license__ = "GPLv2"
 __version__ = "0.9-dev"
 __maintainer__ = "Jai Ram Rideout"
 __email__ = "jai.rideout@gmail.com"
-__status__ = "Development"
 
 def main():
     clout_dir = abspath(join(dirname(__file__), '..'))
