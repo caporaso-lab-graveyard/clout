@@ -19,8 +19,8 @@ from clout.parse import (parse_config_file, parse_email_list,
 from clout.util import CommandExecutor, send_email
 
 def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
-                    user, cluster_tag, cluster_template=None,
-                    setup_timeout=20.0, test_suites_timeout=240.0,
+                    cluster_tag, cluster_template=None,
+                    user='root', setup_timeout=20.0, test_suites_timeout=240.0,
                     teardown_timeout=20.0, sc_exe_fp='starcluster'):
     """Runs the suite(s) of tests and emails the results to the recipients.
 
@@ -39,13 +39,13 @@ def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
             receive the test suite results
         email_settings_f - the file containing email (SMTP) settings to allow
             the script to send an email
-        user - the user who the tests should be run as on the remote cluster (a
-            string)
         cluster_tag - the starcluster cluster tag to use when creating the
             remote cluster (a string)
         cluster_template - the starcluster cluster template to use in the
             starcluster config file. If not provided, the default cluster
             template in the starcluster config file will be used
+        user - the user who the tests should be run as on the remote cluster (a
+            string)
         setup_timeout - the number of minutes to allow the cluster to be set up
             before aborting and attempting to terminate it. Must be a float, to
             allow for fractions of a minute
@@ -69,8 +69,8 @@ def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
     # Get the commands that need to be executed (these include launching a
     # cluster, running the test suites, and terminating the cluster).
     setup_cmds, test_suites_cmds, teardown_cmds = \
-            _build_test_execution_commands(test_suites, sc_config_fp, user,
-                                           cluster_tag, cluster_template,
+            _build_test_execution_commands(test_suites, sc_config_fp,
+                                           cluster_tag, cluster_template, user,
                                            sc_exe_fp)
 
     # Execute the commands and build up the body of an email with the
@@ -86,8 +86,8 @@ def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
                 email_settings['sender'], email_settings['password'],
                 recipients, subject, email_body, attachments)
 
-def _build_test_execution_commands(test_suites, sc_config_fp, user,
-                                   cluster_tag, cluster_template=None,
+def _build_test_execution_commands(test_suites, sc_config_fp, cluster_tag,
+                                   cluster_template=None, user='root',
                                    sc_exe_fp='starcluster'):
     """Builds up commands that need to be executed to run the test suites.
 

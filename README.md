@@ -58,15 +58,19 @@ This file contains four key/value pairs (each separated by a tab) that define ho
 
 **Example 1:** Execute unit test suites remotely
 
-Executes the unit test suites defined in the input configuration file as the ```ubuntu``` user and emails the test results to everyone in the provided email list. The default StarCluster template is used (as is defined in the input starcluster config file) and the starcluster cluster tag is ```nightly_tests```.
+Executes the unit test suites defined in the input configuration file and emails the test results to everyone in the provided email list. The default StarCluster template is used (as is defined in the input starcluster config file) and the starcluster cluster tag is ```nightly_tests```.
 
-    clout -i templates/test_suite_config.txt -s templates/starcluster_config -u ubuntu -c nightly_tests -l templates/recipients.txt -e templates/email_settings.txt
+    clout -i templates/test_suite_config.txt -s templates/starcluster_config -c nightly_tests -l templates/recipients.txt -e templates/email_settings.txt
 
 **Example 2:** Execute test suites remotely using a custom StarCluster cluster template
 
-Executes the test suites using a custom StarCluster cluster template ```test-cluster``` instead of the default cluster template in the StarCluster config file.
+Executes the test suites using a custom StarCluster cluster template ```test-cluster``` instead of the default cluster template in the StarCluster config file. Executes the commands as the ```ubuntu``` user.
 
     clout -i templates/test_suite_config.txt -s templates/starcluster_config -u ubuntu -c nightly_tests -l templates/recipients.txt -e templates/email_settings.txt -t test-cluster
+
+## License
+
+_clout_ is a freely available, open source project licensed under the [GPLv2](http://www.gnu.org/licenses/gpl-2.0.html) license.
 
 ## Acknowledgements
 

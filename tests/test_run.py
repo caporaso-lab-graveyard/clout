@@ -40,15 +40,15 @@ class RunTests(TestCase):
     def test_build_test_execution_commands_standard(self):
         """Test building commands based on standard, valid input."""
         exp = (["starcluster -c sc_config start nightly_tests"],
-               ["starcluster -c sc_config sshmaster -u ubuntu nightly_tests "
+               ["starcluster -c sc_config sshmaster -u root nightly_tests "
                 "'source /bin/setup.sh; cd /bin; ./tests.py'",
-               "starcluster -c sc_config sshmaster -u ubuntu nightly_tests "
+               "starcluster -c sc_config sshmaster -u root nightly_tests "
                "'/bin/cogent_tests'"],
                ["starcluster -c sc_config terminate -c nightly_tests"])
 
         test_suites = parse_config_file(self.config)
         obs = _build_test_execution_commands(test_suites, 'sc_config',
-                'ubuntu', 'nightly_tests')
+                                             'nightly_tests')
         self.assertEqual(obs, exp)
 
     def test_build_test_execution_commands_custom_cluster_template(self):
@@ -63,7 +63,7 @@ class RunTests(TestCase):
 
         test_suites = parse_config_file(self.config)
         obs = _build_test_execution_commands(test_suites, 'sc_config',
-                'ubuntu', 'nightly_tests', 'some_cluster_template')
+                'nightly_tests', 'some_cluster_template', 'ubuntu')
         self.assertEqual(obs, exp)
 
     def test_build_test_execution_commands_custom_starcluster_exe_fp(self):
@@ -79,7 +79,7 @@ class RunTests(TestCase):
 
         test_suites = parse_config_file(self.config)
         obs = _build_test_execution_commands(test_suites, 'sc_config',
-                'ubuntu', 'nightly_tests', 'some_cluster_template',
+                'nightly_tests', 'some_cluster_template', 'ubuntu',
                 '/usr/local/bin/starcluster')
         self.assertEqual(obs, exp)
 
@@ -87,8 +87,7 @@ class RunTests(TestCase):
         """Test building commands with no test suites."""
         exp = (["starcluster -c sc_config start nightly_tests"], [],
                ["starcluster -c sc_config terminate -c nightly_tests"])
-        obs = _build_test_execution_commands([], 'sc_config', 'ubuntu',
-                                             'nightly_tests')
+        obs = _build_test_execution_commands([], 'sc_config', 'nightly_tests')
         self.assertEqual(obs, exp)
 
     def test_execute_commands_and_build_email(self):
