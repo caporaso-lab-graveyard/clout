@@ -18,11 +18,19 @@ from clout.parse import (parse_config_file, parse_email_list,
                          parse_email_settings)
 from clout.util import CommandExecutor, send_email
 
-def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
-                    cluster_tag, cluster_template=None,
-                    user='root', setup_timeout=20.0, test_suites_timeout=240.0,
-                    teardown_timeout=20.0, sc_exe_fp='starcluster'):
-    """Runs the suite(s) of tests and emails the results to the recipients.
+def run_test_suites(config_f,
+                    sc_config_fp,
+                    recipients_f,
+                    email_settings_f,
+                    cluster_tag,
+                    cluster_template=None,
+                    user='root',
+                    spot_bid=None,
+                    setup_timeout=20.0,
+                    test_suites_timeout=240.0,
+                    teardown_timeout=20.0,
+                    sc_exe_fp='starcluster'):
+    """Runs the test suites and emails the results to the recipients.
 
     This function does not return anything. This function is not unit-tested
     because there isn't a clean way to test it since it sends an email, starts
@@ -34,18 +42,20 @@ def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
         config_f - the input configuration file describing the test suites to
             be run
         sc_config_fp - the starcluster config filepath that will be used to
-            start/terminate the remote cluster that the tests will be run on
+            start/terminate the cluster that the tests will be run on
         recipients_f - the file containing email addresses of those who should
             receive the test suite results
         email_settings_f - the file containing email (SMTP) settings to allow
             the script to send an email
         cluster_tag - the starcluster cluster tag to use when creating the
-            remote cluster (a string)
+            cluster (a string)
         cluster_template - the starcluster cluster template to use in the
             starcluster config file. If not provided, the default cluster
             template in the starcluster config file will be used
-        user - the user who the tests should be run as on the remote cluster (a
-            string)
+        user - the user who the tests should be run as on the cluster
+            (a string)
+        spot_bid - the maximum bid to use for worker spot instances (a float).
+            If None, "on-demand" flat rates will be used for all instances
         setup_timeout - the number of minutes to allow the cluster to be set up
             before aborting and attempting to terminate it. Must be a float, to
             allow for fractions of a minute
@@ -71,7 +81,7 @@ def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
     setup_cmds, test_suites_cmds, teardown_cmds = \
             _build_test_execution_commands(test_suites, sc_config_fp,
                                            cluster_tag, cluster_template, user,
-                                           sc_exe_fp)
+                                           spot_bid, sc_exe_fp)
 
     # Execute the commands and build up the body of an email with the
     # summarized results as well as the output in log file attachments.
@@ -88,7 +98,7 @@ def run_test_suites(config_f, sc_config_fp, recipients_f, email_settings_f,
 
 def _build_test_execution_commands(test_suites, sc_config_fp, cluster_tag,
                                    cluster_template=None, user='root',
-                                   sc_exe_fp='starcluster'):
+                                   spot_bid=None, sc_exe_fp='starcluster'):
     """Builds up commands that need to be executed to run the test suites.
 
     These commands are starcluster commands to start/terminate a cluster,
@@ -103,16 +113,25 @@ def _build_test_execution_commands(test_suites, sc_config_fp, cluster_tag,
         test_suites - the output of _parse_config_file()
         sc_config_fp - same as for run_test_suites()
         user - same as for run_test_suites()
+        spot_bid - same as for run_test_suites()
         cluster_tag - same as for run_test_suites()
         cluster_template - same as for run_test_suites()
         sc_exe_fp - same as for run_test_suites()
     """
     setup_cmds, test_suite_cmds, teardown_cmds = [], [], []
 
-    sc_start_cmd = "%s -c %s start " % (sc_exe_fp, sc_config_fp)
+    sc_start_cmd = '%s -c %s start ' % (sc_exe_fp, sc_config_fp)
     if cluster_template is not None:
-        sc_start_cmd += "-c %s " % cluster_template
-    sc_start_cmd += "%s" % cluster_tag
+        sc_start_cmd += '-c %s ' % cluster_template
+
+    ssh_cmd = '%s -c %s ' % (sc_exe_fp, sc_config_fp)
+    if spot_bid is not None:
+        sc_start_cmd += '-b %.2f ' % spot_bid
+        ssh_cmd += 'sshnode -u %s %s node001 ' % (user, cluster_tag)
+    else:
+        ssh_cmd += 'sshmaster -u %s %s ' % (user, cluster_tag)
+
+    sc_start_cmd += cluster_tag
     setup_cmds.append(sc_start_cmd)
 
     for test_suite_name, test_suite_exec in test_suites:
@@ -120,8 +139,7 @@ def _build_test_execution_commands(test_suites, sc_config_fp, cluster_tag,
         # new host, the user must have 'StrictHostKeyChecking no' in their SSH
         # config (on the local machine). TODO: try to get starcluster devs to
         # add this feature to sshmaster.
-        test_suite_cmds.append("%s -c %s sshmaster -u %s %s '%s'" %
-                (sc_exe_fp, sc_config_fp, user, cluster_tag, test_suite_exec))
+        test_suite_cmds.append('%s\'%s\'' % (ssh_cmd, test_suite_exec))
 
     # The second -c tells starcluster not to prompt us for termination
     # confirmation.
@@ -167,9 +185,9 @@ def _execute_commands_and_build_email(test_suites, setup_cmds,
         email_body += ("The maximum allowable cluster setup time of %s "
                        "minute(s) was exceeded.\n\n" % str(setup_timeout))
     elif not setup_cmds_succeeded:
-        email_body += ("There were problems in starting the remote cluster "
-                       "while preparing to execute the test suite(s). Please "
-                       "check the attached log for more details.\n\n")
+        email_body += ("There were problems in starting the cluster while "
+                       "preparing to execute the test suite(s). Please check "
+                       "the attached log for more details.\n\n")
     else:
         # Execute each test suite command, keeping track of stdout and stderr
         # in a temporary file. These will be used as attachments when the
@@ -224,9 +242,9 @@ def _execute_commands_and_build_email(test_suites, setup_cmds,
                        "%s minute(s) was exceeded.\n\n%s" %
                        (str(teardown_timeout), cluster_termination_msg))
     elif not teardown_cmds_succeeded:
-        email_body += ("There were problems in terminating the remote "
-                       "cluster. Please check the attached log for more "
-                       "details.\n\n%s" % cluster_termination_msg)
+        email_body += ("There were problems in terminating the cluster. "
+                       "Please check the attached log for more details.\n\n%s"
+                       % cluster_termination_msg)
 
     # Set our file position to the beginning for all attachments since we are
     # in read/write mode and we need to read from the beginning again. Closing
