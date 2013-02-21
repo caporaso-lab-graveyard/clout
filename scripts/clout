@@ -43,12 +43,16 @@ required_options = [
         help='the input configuration file describing the test suites to be '
         'executed. This is a tab-separated file with two fields. The first '
         'field is the label/name of the test suite and the second field is '
-        'the command(s) to run on the remote cluster to execute the test '
-        'suite'),
+        'the commands to run on the remote cluster to execute the test suite'),
     make_option('-s', '--input_starcluster_config_fp', type='string',
         help='the input starcluster config file. The default cluster template '
-        'will be used by the script to run the test suite(s) on unless the '
-        '-t option is supplied. You should only need a single-node cluster'),
+        'will be used by the script to run the test suites on unless the -t '
+        'option is supplied. You will need a single-node cluster if using the '
+        '"on-demand" flat rate as test suites will be executed on the master '
+        'instance. If using spot instances, you will need a two-node cluster '
+        'where the master is a flat rate instance and the worker node is a '
+        'spot instance. In this case, test suites will be run on the worker '
+        'node. See -b/--spot_bid for more details'),
     make_option('-c', '--cluster_tag', type='string',
         help='the starcluster cluster tag to use for the cluster that the '
         'test suites will run on'),
@@ -70,12 +74,17 @@ optional_group = OptionGroup(parser, 'Optional Options')
 optional_options = [
     make_option('-t', '--cluster_template', type='string',
         help='the cluster template to use (defined in the starcluster config '
-        'file) for running the test suite(s) on. You should only need a '
+        'file) for running the test suites on. You should only need a '
         'single-node cluster [default: starcluster config default template]',
         default=None),
     make_option('-u', '--user', type='string',
         help='the user to run the test suites as on the remote cluster '
         '[default: %default]', default='root'),
+    make_option('-b', '--spot_bid', type='float',
+        help='the maximum bid to use for spot instances. If this option is '
+        'supplied, the master instance will use the "on-demand" flat rate '
+        'and the worker nodes will be spot instances [default: "on-demand" '
+        'flat rate instances are used]', default=None),
     make_option('--setup_timeout', type='float',
         help='the number of minutes to allow the remote cluster to be '
         'created and initialized before aborting. An email will be sent '
@@ -136,6 +145,7 @@ def main():
                     opts.cluster_tag,
                     opts.cluster_template,
                     opts.user,
+                    opts.spot_bid,
                     opts.setup_timeout,
                     opts.test_suites_timeout,
                     opts.teardown_timeout,
