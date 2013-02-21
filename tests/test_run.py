@@ -106,7 +106,7 @@ class RunTests(TestCase):
 
         # With custom cluster template and user.
         exp = (["starcluster -c sc_config start -c some_cluster_template -b "
-                "0.50 nightly_tests"],
+                "1.00 nightly_tests"],
                ["starcluster -c sc_config sshnode -u ubuntu nightly_tests "
                 "node001 'source /bin/setup.sh; cd /bin; ./tests.py'",
                 "starcluster -c sc_config sshnode -u ubuntu nightly_tests "
@@ -115,7 +115,7 @@ class RunTests(TestCase):
 
         obs = _build_test_execution_commands(test_suites, 'sc_config',
                 'nightly_tests', cluster_template='some_cluster_template',
-                user='ubuntu', spot_bid=0.50)
+                user='ubuntu', spot_bid=1)
         self.assertEqual(obs, exp)
 
     def test_execute_commands_and_build_email(self):
