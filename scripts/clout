@@ -12,6 +12,7 @@ __email__ = "jai.rideout@gmail.com"
 from optparse import make_option, OptionParser, OptionGroup
 
 from clout.run import run_test_suites
+from clout.static import MAX_SPOT_BID
 
 script_usage = """usage: %prog [options] {-i input_config_fp -s \
 input_starcluster_config_fp -c cluster_tag -l input_email_list_fp \
@@ -43,12 +44,12 @@ required_options = [
         help='the input configuration file describing the test suites to be '
         'executed. This is a tab-separated file with two fields. The first '
         'field is the label/name of the test suite and the second field is '
-        'the command(s) to run on the remote cluster to execute the test '
-        'suite'),
+        'the commands to run on the cluster to execute the test suite'),
     make_option('-s', '--input_starcluster_config_fp', type='string',
         help='the input starcluster config file. The default cluster template '
-        'will be used by the script to run the test suite(s) on unless the '
-        '-t option is supplied. You should only need a single-node cluster'),
+        'will be used to run the test suites on unless the -t option is '
+        'supplied. You will need a single-node cluster (i.e. only a master '
+        'instance). The test suites will be executed on the master instance'),
     make_option('-c', '--cluster_tag', type='string',
         help='the starcluster cluster tag to use for the cluster that the '
         'test suites will run on'),
@@ -70,39 +71,48 @@ optional_group = OptionGroup(parser, 'Optional Options')
 optional_options = [
     make_option('-t', '--cluster_template', type='string',
         help='the cluster template to use (defined in the starcluster config '
-        'file) for running the test suite(s) on. You should only need a '
+        'file) for running the test suites on. You will only need a '
         'single-node cluster [default: starcluster config default template]',
         default=None),
     make_option('-u', '--user', type='string',
         help='the user to run the test suites as on the remote cluster '
         '[default: %default]', default='root'),
+    make_option('-b', '--spot_bid', type='float',
+        help='the maximum bid to use for spot instances. If this option is '
+        'supplied, the master instance (and any worker nodes) will be '
+        'launched as spot instances. Units are in USD. For example, 0.50 '
+        'specifies a max spot bid of $0.50 (i.e. 50 cents) '
+        '[default: "on-demand" flat rate instances are used]', default=None),
     make_option('--setup_timeout', type='float',
-        help='the number of minutes to allow the remote cluster to be '
-        'created and initialized before aborting. An email will be sent '
-        'saying there was a timeout during cluster setup, and the cluster '
-        'will be attempted to be terminated, if possible. Fractions of a '
-        'minute are allowed [default: %default]',
-        default=20.0),
+        help='the number of minutes to allow the cluster to be created and '
+        'initialized before aborting. An email will be sent saying there was '
+        'a timeout during cluster setup, and the cluster will be attempted to '
+        'be terminated, if possible. Fractions of a minute are allowed '
+        '[default: %default]', default=20.0),
     make_option('--test_suites_timeout', type='float',
         help='the number of minutes to wait before aborting the current test '
-        'suite and terminating the remote cluster. This timeout applies to '
-        'how long *all* test suites take to run as a whole. For example, this '
-        'option is useful if some tests have a chance of "hanging", or if '
-        'something happens on the remote cluster that causes a command to '
-        'never finish. An email will be sent saying there was a timeout. '
-        'Fractions of a minute are allowed [default: %default]',
-        default=240.0),
+        'suite and terminating the cluster. This timeout applies to how long '
+        '*all* test suites take to run as a whole. For example, this option '
+        'is useful if some tests have a chance of "hanging", or if something '
+        'happens on the cluster that causes a command to never finish. An '
+        'email will be sent saying there was a timeout. Fractions of a minute '
+        'are allowed [default: %default]', default=240.0),
     make_option('--teardown_timeout', type='float',
-        help='the number of minutes to allow the remote cluster to be '
-        'terminated before aborting. An email will be sent saying there was a '
-        'timeout during cluster termination, with a warning that the user '
-        'should check that the cluster did indeed shut down correctly. '
-        'Fractions of a minute are allowed [default: %default]',
-        default=20.0),
+        help='the number of minutes to allow the cluster to be terminated '
+        'before aborting. An email will be sent saying there was a timeout '
+        'during cluster termination, with a warning that the user should '
+        'check that the cluster did indeed shut down correctly. Fractions of '
+        'a minute are allowed [default: %default]', default=20.0),
     make_option('--starcluster_exe_fp', type='string',
         help='the full path to the starcluster executable. By default, '
         'will look for "starcluster" in PATH [default: %default]',
-        default='starcluster')
+        default='starcluster'),
+    make_option('--suppress_spot_bid_check', action='store_true',
+        help='suppress sanity checking of spot bid provided via '
+        '-b/--spot_bid. By default, Clout assumes spot bids that are greater '
+        'than ' + '$%.2f' % MAX_SPOT_BID + ' were made in error. Invoking '
+        'this option will disable the sanity check [default: %default]',
+        default=False)
 ]
 
 optional_group.add_options(optional_options)
@@ -136,10 +146,12 @@ def main():
                     opts.cluster_tag,
                     opts.cluster_template,
                     opts.user,
+                    opts.spot_bid,
                     opts.setup_timeout,
                     opts.test_suites_timeout,
                     opts.teardown_timeout,
-                    opts.starcluster_exe_fp)
+                    opts.starcluster_exe_fp,
+                    opts.suppress_spot_bid_check)
 
 
 if __name__ == "__main__":

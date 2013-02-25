@@ -32,10 +32,22 @@ class RunTests(TestCase):
         """Test passing in bad input to run_test_suites()."""
         # Just use placeholders as input. We are only concerned with invalid
         # timeouts.
-        self.assertRaises(ValueError, run_test_suites, 1, 1, 1, 1, 1, 1, 1, 10,
-                0, 20)
-        self.assertRaises(ValueError, run_test_suites, 1, 1, 1, 1, 1, 1, 1, -1,
-                0, 0)
+        self.assertRaises(ValueError, run_test_suites, 1, 1, 1, 1, 1, 1, 1, 1,
+                          10, 0, 20, 42)
+        self.assertRaises(ValueError, run_test_suites, 1, 1, 1, 1, 1, 1, 1, 1,
+                          -1, 0, 0, 42)
+
+        # spot_bid can't be converted to a float.
+        self.assertRaises(ValueError, run_test_suites, 1, 1, 1, 1, 1, 1, 1,
+                          'foo', 1, 1, 1, 1)
+
+        # spot_bid is <= 0.
+        self.assertRaises(ValueError, run_test_suites, 1, 1, 1, 1, 1, 1, 1, 0,
+                          1, 1, 1, 1)
+
+        # spot_bid is > MAX_SPOT_BID.
+        self.assertRaises(ValueError, run_test_suites, 1, 1, 1, 1, 1, 1, 1,
+                          10.42, 1, 1, 1, 1)
 
     def test_build_test_execution_commands_standard(self):
         """Test building commands based on standard, valid input."""
@@ -80,7 +92,7 @@ class RunTests(TestCase):
         test_suites = parse_config_file(self.config)
         obs = _build_test_execution_commands(test_suites, 'sc_config',
                 'nightly_tests', 'some_cluster_template', 'ubuntu',
-                '/usr/local/bin/starcluster')
+                sc_exe_fp='/usr/local/bin/starcluster')
         self.assertEqual(obs, exp)
 
     def test_build_test_execution_commands_no_test_suites(self):
@@ -88,6 +100,35 @@ class RunTests(TestCase):
         exp = (["starcluster -c sc_config start nightly_tests"], [],
                ["starcluster -c sc_config terminate -c nightly_tests"])
         obs = _build_test_execution_commands([], 'sc_config', 'nightly_tests')
+        self.assertEqual(obs, exp)
+
+    def test_build_test_execution_commands_spot_bid(self):
+        """Test building commands using spot bids instead of flat rates."""
+        exp = (["starcluster -c sc_config start -b 0.50 --force-spot-master "
+                "nightly_tests"],
+               ["starcluster -c sc_config sshmaster -u root nightly_tests "
+                "'source /bin/setup.sh; cd /bin; ./tests.py'",
+                "starcluster -c sc_config sshmaster -u root nightly_tests "
+                "'/bin/cogent_tests'"],
+               ["starcluster -c sc_config terminate -c nightly_tests"])
+
+        test_suites = parse_config_file(self.config)
+        obs = _build_test_execution_commands(test_suites, 'sc_config',
+                'nightly_tests', spot_bid=0.50)
+        self.assertEqual(obs, exp)
+
+        # With custom cluster template and user.
+        exp = (["starcluster -c sc_config start -c some_cluster_template -b "
+                "1.00 --force-spot-master nightly_tests"],
+               ["starcluster -c sc_config sshmaster -u ubuntu nightly_tests "
+                "'source /bin/setup.sh; cd /bin; ./tests.py'",
+                "starcluster -c sc_config sshmaster -u ubuntu nightly_tests "
+                "'/bin/cogent_tests'"],
+               ["starcluster -c sc_config terminate -c nightly_tests"])
+
+        obs = _build_test_execution_commands(test_suites, 'sc_config',
+                'nightly_tests', cluster_template='some_cluster_template',
+                user='ubuntu', spot_bid=1)
         self.assertEqual(obs, exp)
 
     def test_execute_commands_and_build_email(self):
@@ -162,7 +203,7 @@ class RunTests(TestCase):
             ['echo foo'],
             ['echo tearing down'],
             1, 1, 1, 'test-cluster-tag')
-        self.assertEqual(obs[0], 'There were problems in starting the remote '
+        self.assertEqual(obs[0], 'There were problems in starting the '
         'cluster while preparing to execute the test suite(s). Please check '
         'the attached log for more details.\n\n')
 
@@ -183,10 +224,10 @@ class RunTests(TestCase):
             ['echo foo'],
             ['foobarbaz'],
             1, 1, 1, 'test-cluster-tag')
-        self.assertEqual(obs[0], "There were problems in starting the remote "
+        self.assertEqual(obs[0], "There were problems in starting the "
         "cluster while preparing to execute the test suite(s). Please check "
         "the attached log for more details.\n\nThere were problems in "
-        "terminating the remote cluster. Please check the attached log for "
+        "terminating the cluster. Please check the attached log for "
         "more details.\n\nIMPORTANT: You should check that the cluster "
         "labelled with the tag 'test-cluster-tag' was properly terminated. If "
         "not, you should manually terminate it.\n\n")

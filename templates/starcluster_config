@@ -26,8 +26,16 @@ KEY_LOCATION=/some/RSA/key/location
 [cluster clout]
 KEYNAME = clout_key
 CLUSTER_SIZE = 1
-CLUSTER_USER = sgeadmin
 CLUSTER_SHELL = bash
+NODE_IMAGE_ID = some_ami_id
+NODE_INSTANCE_TYPE = m2.xlarge
+DISABLE_QUEUE=True
+
+[cluster clout_example_cluster]
+KEYNAME = clout_key
+CLUSTER_SIZE = 1
+CLUSTER_SHELL = bash
+CLUSTER_USER = ubuntu
 NODE_IMAGE_ID = some_ami_id
 NODE_INSTANCE_TYPE = m2.xlarge
 DISABLE_QUEUE=True
