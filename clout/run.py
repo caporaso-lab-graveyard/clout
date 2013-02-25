@@ -16,6 +16,7 @@ from tempfile import TemporaryFile
 from clout.format import format_email_summary
 from clout.parse import (parse_config_file, parse_email_list,
                          parse_email_settings)
+from clout.static import MAX_SPOT_BID
 from clout.util import CommandExecutor, send_email
 
 def run_test_suites(config_f,
@@ -29,7 +30,8 @@ def run_test_suites(config_f,
                     setup_timeout=20.0,
                     test_suites_timeout=240.0,
                     teardown_timeout=20.0,
-                    sc_exe_fp='starcluster'):
+                    sc_exe_fp='starcluster',
+                    suppress_spot_bid_check=False):
     """Runs the test suites and emails the results to the recipients.
 
     This function does not return anything. This function is not unit-tested
@@ -54,7 +56,7 @@ def run_test_suites(config_f,
             template in the starcluster config file will be used
         user - the user who the tests should be run as on the cluster
             (a string)
-        spot_bid - the maximum bid to use for worker spot instances (a float).
+        spot_bid - the maximum bid in USD to use for spot instances (a float).
             If None, "on-demand" flat rates will be used for all instances
         setup_timeout - the number of minutes to allow the cluster to be set up
             before aborting and attempting to terminate it. Must be a float, to
@@ -66,9 +68,29 @@ def run_test_suites(config_f,
             terminated before aborting. Must be a float, to allow for fractions
             of a minute
         sc_exe_fp - path to the starcluster executable
+        suppress_spot_bid_check - if True, suppress sanity checking of
+            spot_bid. By default, if spot_bid is greater than
+            clout.static.MAX_SPOT_BID, an error will be raised
     """
     if setup_timeout <= 0 or test_suites_timeout <= 0 or teardown_timeout <= 0:
         raise ValueError("The timeout (in minutes) must be greater than zero.")
+
+    if spot_bid is not None:
+        try:
+            spot_bid = float(spot_bid)
+        except ValueError:
+            raise ValueError("Could not convert max spot bid to a float. Max "
+                             "spot bid must be numeric.")
+
+        if spot_bid <= 0:
+            raise ValueError("Max spot bid of $%.2f must be greater than zero."
+                             % spot_bid)
+
+        if not suppress_spot_bid_check and spot_bid > MAX_SPOT_BID:
+            raise ValueError("Max spot bid of $%.2f seems very high. If you "
+                             "are sure this is the max spot bid that you want "
+                             "to use, you can suppress this check with "
+                             "--supprress_spot_bid_check." % spot_bid)
 
     # Parse the various configuration files first so that we know if there's
     # any outstanding problems with file formats before continuing.
@@ -121,15 +143,12 @@ def _build_test_execution_commands(test_suites, sc_config_fp, cluster_tag,
     setup_cmds, test_suite_cmds, teardown_cmds = [], [], []
 
     sc_start_cmd = '%s -c %s start ' % (sc_exe_fp, sc_config_fp)
+
     if cluster_template is not None:
         sc_start_cmd += '-c %s ' % cluster_template
 
-    ssh_cmd = '%s -c %s ' % (sc_exe_fp, sc_config_fp)
     if spot_bid is not None:
-        sc_start_cmd += '-b %.2f ' % spot_bid
-        ssh_cmd += 'sshnode -u %s %s node001 ' % (user, cluster_tag)
-    else:
-        ssh_cmd += 'sshmaster -u %s %s ' % (user, cluster_tag)
+        sc_start_cmd += '-b %.2f --force-spot-master ' % spot_bid
 
     sc_start_cmd += cluster_tag
     setup_cmds.append(sc_start_cmd)
@@ -139,7 +158,8 @@ def _build_test_execution_commands(test_suites, sc_config_fp, cluster_tag,
         # new host, the user must have 'StrictHostKeyChecking no' in their SSH
         # config (on the local machine). TODO: try to get starcluster devs to
         # add this feature to sshmaster.
-        test_suite_cmds.append('%s\'%s\'' % (ssh_cmd, test_suite_exec))
+        test_suite_cmds.append('%s -c %s sshmaster -u %s %s \'%s\'' %
+                (sc_exe_fp, sc_config_fp, user, cluster_tag, test_suite_exec))
 
     # The second -c tells starcluster not to prompt us for termination
     # confirmation.

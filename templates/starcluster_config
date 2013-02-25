@@ -31,12 +31,11 @@ NODE_IMAGE_ID = some_ami_id
 NODE_INSTANCE_TYPE = m2.xlarge
 DISABLE_QUEUE=True
 
-[cluster clout_spot_bid]
+[cluster clout_example_cluster]
 KEYNAME = clout_key
-CLUSTER_SIZE = 2
+CLUSTER_SIZE = 1
 CLUSTER_SHELL = bash
 CLUSTER_USER = ubuntu
-MASTER_INSTANCE_TYPE = t1.micro
 NODE_IMAGE_ID = some_ami_id
 NODE_INSTANCE_TYPE = m2.xlarge
 DISABLE_QUEUE=True

@@ -37,6 +37,18 @@ class RunTests(TestCase):
         self.assertRaises(ValueError, run_test_suites, 1, 1, 1, 1, 1, 1, 1, 1,
                           -1, 0, 0, 42)
 
+        # spot_bid can't be converted to a float.
+        self.assertRaises(ValueError, run_test_suites, 1, 1, 1, 1, 1, 1, 1,
+                          'foo', 1, 1, 1, 1)
+
+        # spot_bid is <= 0.
+        self.assertRaises(ValueError, run_test_suites, 1, 1, 1, 1, 1, 1, 1, 0,
+                          1, 1, 1, 1)
+
+        # spot_bid is > MAX_SPOT_BID.
+        self.assertRaises(ValueError, run_test_suites, 1, 1, 1, 1, 1, 1, 1,
+                          10.42, 1, 1, 1, 1)
+
     def test_build_test_execution_commands_standard(self):
         """Test building commands based on standard, valid input."""
         exp = (["starcluster -c sc_config start nightly_tests"],
@@ -92,11 +104,12 @@ class RunTests(TestCase):
 
     def test_build_test_execution_commands_spot_bid(self):
         """Test building commands using spot bids instead of flat rates."""
-        exp = (["starcluster -c sc_config start -b 0.50 nightly_tests"],
-               ["starcluster -c sc_config sshnode -u root nightly_tests "
-                "node001 'source /bin/setup.sh; cd /bin; ./tests.py'",
-                "starcluster -c sc_config sshnode -u root nightly_tests "
-                "node001 '/bin/cogent_tests'"],
+        exp = (["starcluster -c sc_config start -b 0.50 --force-spot-master "
+                "nightly_tests"],
+               ["starcluster -c sc_config sshmaster -u root nightly_tests "
+                "'source /bin/setup.sh; cd /bin; ./tests.py'",
+                "starcluster -c sc_config sshmaster -u root nightly_tests "
+                "'/bin/cogent_tests'"],
                ["starcluster -c sc_config terminate -c nightly_tests"])
 
         test_suites = parse_config_file(self.config)
@@ -106,11 +119,11 @@ class RunTests(TestCase):
 
         # With custom cluster template and user.
         exp = (["starcluster -c sc_config start -c some_cluster_template -b "
-                "1.00 nightly_tests"],
-               ["starcluster -c sc_config sshnode -u ubuntu nightly_tests "
-                "node001 'source /bin/setup.sh; cd /bin; ./tests.py'",
-                "starcluster -c sc_config sshnode -u ubuntu nightly_tests "
-                "node001 '/bin/cogent_tests'"],
+                "1.00 --force-spot-master nightly_tests"],
+               ["starcluster -c sc_config sshmaster -u ubuntu nightly_tests "
+                "'source /bin/setup.sh; cd /bin; ./tests.py'",
+                "starcluster -c sc_config sshmaster -u ubuntu nightly_tests "
+                "'/bin/cogent_tests'"],
                ["starcluster -c sc_config terminate -c nightly_tests"])
 
         obs = _build_test_execution_commands(test_suites, 'sc_config',

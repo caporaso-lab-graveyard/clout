@@ -58,15 +58,15 @@ This file contains four key/value pairs (each separated by a tab) that define ho
 
 **Example 1:** Execute unit test suites remotely
 
-Executes the unit test suites defined in the input configuration file and emails the test results to everyone in the provided email list. The default StarCluster template is used (as is defined in the input starcluster config file) and the StarCluster cluster tag is ```nightly_tests```. The "on-demand" flat rate is used for the single instance that is created and commands are run directly on the instance.
+Executes the unit test suites defined in the input configuration file and emails the test results to everyone in the provided email list. The default StarCluster template is used (as is defined in the input starcluster config file) and the StarCluster cluster tag is ```nightly_tests```. The "on-demand" flat rate is used for the single master instance that is created. Commands are run directly on the master instance.
 
     clout -i templates/test_suite_config.txt -s templates/starcluster_config -c nightly_tests -l templates/recipients.txt -e templates/email_settings.txt
 
 **Example 2:** Execute test suites remotely using a custom StarCluster cluster template, user, and spot bidding
 
-Executes the test suites using a custom StarCluster cluster template ```clout_spot_bid``` instead of the default cluster template in the StarCluster config file. Executes the commands as the ```ubuntu``` user on the single worker node, which is a spot instance with a maximum bid of 0.50. The master instance is created with the "on-demand" flat rate.
+Executes the test suites using a custom StarCluster cluster template ```clout_example_cluster``` instead of the default cluster template in the StarCluster config file. Executes the commands as the ```ubuntu``` user on the master instance, which is created as a spot instance with a maximum bid of $0.50 USD (i.e. 50 cents).
 
-    clout -i templates/test_suite_config.txt -s templates/starcluster_config -u ubuntu -c nightly_tests -l templates/recipients.txt -e templates/email_settings.txt -t clout_spot_bid -b 0.50
+    clout -i templates/test_suite_config.txt -s templates/starcluster_config -c nightly_tests -l templates/recipients.txt -e templates/email_settings.txt -t clout_example_cluster -u ubuntu -b 0.50
 
 ## License
 
